@@ -9,11 +9,11 @@ class UserData extends Data
 {
     public function __construct(
         public int $id,
-        public int $uuid,
-        public int $first_name,
-        public int $last_name,
-        public int $email,
-        public int $username,
+        public string $uuid,
+        public string $first_name,
+        public string $last_name,
+        public string $email,
+        public string $username,
         public ?Status $status,
     ) {}
 }

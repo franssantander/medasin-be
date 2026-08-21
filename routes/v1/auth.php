@@ -12,6 +12,7 @@ Route::prefix('auth')
 
         Route::middleware('auth:api')->group(function () {
             Route::get('me', 'me')->name('me');
-            Route::post('logut', 'logout')->name('logout');
+            Route::post('logout', 'logout')->name('logout');
+            Route::post('refresh', 'refresh')->name('refresh');
         });
     });
