@@ -5,6 +5,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use App\Http\Middleware\AuthenticateFromCookie;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -14,8 +15,16 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
         apiPrefix: 'api/v1'
     )
+    ->withBroadcasting(
+        __DIR__ . '/../routes/channels.php',
+        ['middleware' => ['api', 'auth:api']],
+    )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        $middleware->api(prepend: [
+            AuthenticateFromCookie::class,
+        ]);
+        $middleware->trustProxies(at: '*');
+        $middleware->redirectGuestsTo(fn() => null);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
