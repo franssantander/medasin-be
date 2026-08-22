@@ -10,7 +10,7 @@ Route::prefix('area')
     ->group(function () {
         Route::get('/', 'index')->name('index');
         Route::post('/', 'store')->name('store');
-        Route::get('/{area}', 'show')->name('store');
+        Route::get('/{area}', 'show')->name('show');
         Route::put('/{area}', 'update')->name('update');
         Route::delete('/{area}', 'destroy')->name('destroy');
     });

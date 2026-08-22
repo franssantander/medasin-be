@@ -45,9 +45,15 @@ class AreaController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(Area $area)
+    public function show(Request $request, Area $area)
     {
-        return $this->success($area);
+        $data = $request->user()
+            ->areas()
+            ->whereKey($area->getKey())
+            ->with(['projects', 'resources'])
+            ->firstOrFail();
+
+        return $this->success($data);
     }
 
     /**
@@ -63,8 +69,9 @@ class AreaController extends Controller
      */
     public function update(UpdateAreaRequest $request, Area $area)
     {
-        $data =  $area->update($request->validated());
-        return $this->success($data, 'Successfully updated area.');
+        $area->update($request->validated());
+
+        return $this->success($area->fresh(), 'Successfully updated area.');
     }
 
     /**
@@ -73,6 +80,7 @@ class AreaController extends Controller
     public function destroy(Area $area)
     {
         $area->delete();
+
         return $this->success(null, 'Successfully deleted area.');
     }
 }
