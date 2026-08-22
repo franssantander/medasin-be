@@ -29,6 +29,7 @@ return new class extends Migration
 
             $table->timestamp('archived_at')->nullable();
 
+            $table->softDeletes();
             $table->timestamps();
 
             $table->unique(['user_id', 'slug']);

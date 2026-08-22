@@ -42,6 +42,7 @@ return new class extends Migration
             $table->timestamp('archived_at')->nullable();
 
             $table->timestamps();
+            $table->softDeletes();
 
             $table->unique(['user_id', 'slug']);
             $table->index(['user_id', 'area_id']);

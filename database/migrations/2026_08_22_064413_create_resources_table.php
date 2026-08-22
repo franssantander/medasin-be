@@ -36,6 +36,7 @@ return new class extends Migration
             $table->timestamp('archived_at')->nullable();
 
             $table->timestamps();
+            $table->softDeletes();
 
             $table->index(['user_id', 'type']);
             $table->index(['user_id', 'archived_at']);

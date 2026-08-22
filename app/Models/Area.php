@@ -5,9 +5,12 @@ namespace App\Models;
 use App\Models\Concerns\HasUuid;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
+
 
 #[Fillable([
     'name',
@@ -28,6 +31,20 @@ class Area extends Model
         ];
     }
 
+    protected static function booted(): void
+    {
+        static::creating(function (Area $area): void {
+            $area->slug = Str::slug($area->name);
+        });
+
+        static::updating(function (Area $area): void {
+            if ($area->isDirty('name')) {
+                $area->slug = Str::slug($area->name);
+            }
+        });
+    }
+
+
     public function projects(): HasMany
     {
         return $this->hasMany(Project::class);
@@ -37,5 +54,10 @@ class Area extends Model
     {
         return $this->belongsToMany(Resource::class)
             ->withTimestamps();
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
     }
 }
