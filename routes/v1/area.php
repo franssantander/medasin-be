@@ -28,6 +28,8 @@ Route::prefix('area/{area}')
     ->group(function () {
         Route::apiResource('goals', AreaGoalController::class);
         Route::apiResource('habits', AreaHabitController::class);
+        Route::get('habits/{habit}/history', [AreaHabitController::class, 'history'])->name('habits.history');
+        Route::put('habits/{habit}/check-ins/{date}', [AreaHabitController::class, 'checkIn'])->where('date', '\\d{4}-\\d{2}-\\d{2}')->name('habits.check-ins.update');
         Route::apiResource('notes', AreaNoteController::class);
 
         Route::get('projects', [AreaProjectController::class, 'index'])->name('projects.index');

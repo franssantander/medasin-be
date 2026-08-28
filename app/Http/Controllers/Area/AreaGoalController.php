@@ -10,6 +10,7 @@ use App\Http\Requests\Area\UpdateGoalRequest;
 use App\Models\Area;
 use App\Models\Goal;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class AreaGoalController extends Controller
 {
@@ -18,8 +19,29 @@ class AreaGoalController extends Controller
     public function index(Request $request, Area $area)
     {
         $area = $this->ownedArea($request->user(), $area);
+        $filter = $request->validate([
+            'filter' => ['sometimes', Rule::in(['all', 'active', 'completed', 'cancelled'])],
+        ])['filter'] ?? 'all';
 
-        return $this->success($area->goals()->latest()->paginate(15));
+        $goals = $area->goals();
+        $counts = [
+            'all' => (clone $goals)->count(),
+            'active' => (clone $goals)->whereIn('status', [GoalStatus::PENDING->value, GoalStatus::IN_PROGRESS->value])->count(),
+            'completed' => (clone $goals)->where('status', GoalStatus::COMPLETED->value)->count(),
+            'cancelled' => (clone $goals)->where('status', GoalStatus::CANCELLED->value)->count(),
+        ];
+
+        $goals = match ($filter) {
+            'active' => $goals->whereIn('status', [GoalStatus::PENDING->value, GoalStatus::IN_PROGRESS->value]),
+            'completed' => $goals->where('status', GoalStatus::COMPLETED->value),
+            'cancelled' => $goals->where('status', GoalStatus::CANCELLED->value),
+            default => $goals,
+        };
+
+        return $this->success([
+            'items' => $goals->latest()->paginate(15),
+            'counts' => $counts,
+        ]);
     }
 
     public function store(StoreGoalRequest $request, Area $area)

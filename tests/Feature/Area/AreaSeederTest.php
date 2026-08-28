@@ -4,6 +4,7 @@ namespace Tests\Feature\Area;
 
 use App\Models\User;
 use Database\Seeders\AreaSeeder;
+use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -27,7 +28,7 @@ class AreaSeederTest extends TestCase
             'finances' => 'WalletCards',
             'health' => 'HeartPulse',
             'personal-development' => 'Sprout',
-            'spirit' => 'Sparkles',
+            'spiritual' => 'Sparkles',
             'work' => 'Laptop',
         ];
 
@@ -45,5 +46,24 @@ class AreaSeederTest extends TestCase
             $this->assertSame("areas/backgrounds/seed/{$slug}.png", $area->background_image);
             Storage::disk('public')->assertExists($area->background_image);
         }
+    }
+
+    public function test_database_seeder_creates_habits_with_icons_and_normalized_schedules(): void
+    {
+        Storage::fake('public');
+        $this->seed(DatabaseSeeder::class);
+        $user = User::where('email', 'test@example.com')->firstOrFail();
+        $habits = $user->areas()->with('habits')->get()->flatMap->habits->keyBy('name');
+
+        $this->assertSame('Footprints', $habits['Morning walk']->icon);
+        $this->assertNull($habits['Morning walk']->schedule);
+        $this->assertSame('Dumbbell', $habits['Strength training']->icon);
+        $this->assertSame(['monday', 'wednesday', 'friday'], $habits['Strength training']->schedule['days']);
+        $this->assertSame('ListChecks', $habits['Weekly review']->icon);
+        $this->assertSame(['friday'], $habits['Weekly review']->schedule['days']);
+        $this->assertSame('BookOpen', $habits['Read for thirty minutes']->icon);
+        $this->assertNull($habits['Read for thirty minutes']->schedule);
+        $this->assertSame('NotebookPen', $habits['Monthly reflection']->icon);
+        $this->assertSame([28], $habits['Monthly reflection']->schedule['dates']);
     }
 }

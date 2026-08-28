@@ -5,6 +5,7 @@ namespace Tests\Feature\Area;
 use App\Models\Project;
 use App\Models\Resource;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -140,9 +141,39 @@ class AreaModuleTest extends TestCase
 
         $this->getJson(route('area.goals.index', $area))
             ->assertOk()
-            ->assertJsonCount(1, 'data.data');
+            ->assertJsonCount(1, 'data.items.data')
+            ->assertJsonPath('data.counts.all', 1)
+            ->assertJsonPath('data.counts.completed', 1);
         $this->deleteJson(route('area.goals.destroy', [$area, $goalUuid]))->assertOk();
         $this->assertSoftDeleted('goals', ['uuid' => $goalUuid]);
+    }
+
+    public function test_goals_can_be_filtered_with_accurate_status_counts(): void
+    {
+        $user = User::factory()->create();
+        $area = $user->areas()->create(['name' => 'Career']);
+        Passport::actingAs($user);
+
+        foreach (['pending', 'in_progress', 'completed', 'cancelled'] as $status) {
+            $area->goals()->create(['title' => ucfirst(str_replace('_', ' ', $status)), 'status' => $status]);
+        }
+
+        $this->getJson(route('area.goals.index', [$area, 'filter' => 'active']))
+            ->assertOk()
+            ->assertJsonCount(2, 'data.items.data')
+            ->assertJsonPath('data.counts.all', 4)
+            ->assertJsonPath('data.counts.active', 2)
+            ->assertJsonPath('data.counts.completed', 1)
+            ->assertJsonPath('data.counts.cancelled', 1);
+
+        $this->getJson(route('area.goals.index', [$area, 'filter' => 'completed']))
+            ->assertOk()
+            ->assertJsonCount(1, 'data.items.data')
+            ->assertJsonPath('data.items.data.0.status', 'completed');
+
+        $this->getJson(route('area.goals.index', [$area, 'filter' => 'unknown']))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('filter');
     }
 
     public function test_habit_and_note_crud_persist_practical_fields(): void
@@ -155,10 +186,14 @@ class AreaModuleTest extends TestCase
             'name' => 'Meditate',
             'frequency' => 'weekly',
             'schedule' => ['days' => ['monday', 'friday']],
-        ])->assertCreated()->json('data');
+        ])->assertCreated()->assertJsonPath('data.icon', 'Repeat2')->json('data');
 
-        $this->putJson(route('area.habits.update', [$area, $habit['uuid']]), ['is_active' => false])
+        $this->putJson(route('area.habits.update', [$area, $habit['uuid']]), [
+            'icon' => 'Brain',
+            'is_active' => false,
+        ])
             ->assertOk()
+            ->assertJsonPath('data.icon', 'Brain')
             ->assertJsonPath('data.is_active', false);
 
         $unpinned = $this->postJson(route('area.notes.store', $area), [
@@ -177,6 +212,82 @@ class AreaModuleTest extends TestCase
 
         $this->deleteJson(route('area.habits.destroy', [$area, $habit['uuid']]))->assertOk();
         $this->deleteJson(route('area.notes.destroy', [$area, $unpinned['uuid']]))->assertOk();
+    }
+
+    public function test_habit_check_ins_track_history_and_streaks(): void
+    {
+        $user = User::factory()->create();
+        $area = $user->areas()->create(['name' => 'Health']);
+        Passport::actingAs($user);
+        Carbon::setTestNow('2026-08-27 10:00:00');
+
+        $habit = $this->postJson(route('area.habits.store', $area), [
+            'name' => 'Walk',
+            'frequency' => 'daily',
+        ])->assertCreated()->json('data');
+
+        Carbon::setTestNow('2026-08-29 10:00:00');
+
+        $this->putJson(route('area.habits.check-ins.update', [$area, $habit['uuid'], '2026-08-28']), ['completed' => true])->assertOk();
+        $this->putJson(route('area.habits.check-ins.update', [$area, $habit['uuid'], '2026-08-29']), ['completed' => true])->assertOk();
+
+        $this->getJson(route('area.habits.history', [$area, $habit['uuid']]).'?start_date=2026-08-28&end_date=2026-08-29')
+            ->assertOk()
+            ->assertJsonPath('data.current_streak', 2)
+            ->assertJsonPath('data.best_streak', 2)
+            ->assertJsonPath('data.completion_rate', 100)
+            ->assertJsonCount(2, 'data.check_ins');
+
+        $this->putJson(route('area.habits.check-ins.update', [$area, $habit['uuid'], '2026-08-29']), ['completed' => false])
+            ->assertOk()
+            ->assertJsonPath('data.current_streak', 0);
+
+        $this->putJson(route('area.habits.check-ins.update', [$area, $habit['uuid'], '2026-08-30']), ['completed' => true])
+            ->assertUnprocessable();
+
+        Carbon::setTestNow();
+    }
+
+    public function test_habit_check_in_rejects_unscheduled_dates_and_other_users(): void
+    {
+        $owner = User::factory()->create();
+        $area = $owner->areas()->create(['name' => 'Health']);
+        Passport::actingAs($owner);
+        $habit = $this->postJson(route('area.habits.store', $area), [
+            'name' => 'Weekly review',
+            'frequency' => 'weekly',
+            'schedule' => ['days' => ['monday']],
+        ])->assertCreated()->json('data');
+
+        $this->putJson(route('area.habits.check-ins.update', [$area, $habit['uuid'], '2026-08-29']), ['completed' => true])
+            ->assertUnprocessable();
+
+        Passport::actingAs(User::factory()->create());
+        $this->getJson(route('area.habits.history', [$area, $habit['uuid']]).'?start_date=2026-08-01&end_date=2026-08-29')
+            ->assertNotFound();
+    }
+
+    public function test_habit_check_in_uses_the_users_calendar_timezone(): void
+    {
+        Carbon::setTestNow('2026-08-28 16:30:00');
+        $user = User::factory()->create();
+        $area = $user->areas()->create(['name' => 'Health']);
+        Passport::actingAs($user);
+        $habit = $this->postJson(route('area.habits.store', $area), [
+            'name' => 'Drink water',
+            'frequency' => 'daily',
+        ])->assertCreated()->json('data');
+
+        $this->putJson(route('area.habits.check-ins.update', [$area, $habit['uuid'], '2026-08-29']), [
+            'completed' => true,
+            'timezone' => 'Asia/Manila',
+        ])->assertOk()->assertJsonPath('data.current_streak', 1);
+
+        $this->getJson(route('area.habits.history', [$area, $habit['uuid']]).'?start_date=2026-08-29&end_date=2026-08-29&timezone=Asia%2FManila')
+            ->assertOk()
+            ->assertJsonPath('data.completed_count', 1);
+
+        Carbon::setTestNow();
     }
 
     public function test_projects_can_be_reassigned_and_detached_from_an_area(): void

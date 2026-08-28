@@ -35,7 +35,7 @@ class AreaSeeder extends Seeder
                 'description' => 'Focused execution, responsibilities, and the craft of doing excellent work.',
             ],
             [
-                'name' => 'Spirit',
+                'name' => 'Spiritual',
                 'icon' => 'Sparkles',
                 'description' => 'Inner clarity, meaning, stillness, and connection to something greater.',
             ],

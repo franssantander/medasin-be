@@ -93,13 +93,15 @@ class DatabaseSeeder extends Seeder
         $this->seedHabits($health, [
             [
                 'name' => 'Morning walk',
+                'icon' => 'Footprints',
                 'description' => 'Walk outside before starting work.',
                 'frequency' => HabitFrequency::DAILY,
-                'schedule' => ['time' => '07:00'],
+                'schedule' => null,
                 'is_active' => true,
             ],
             [
                 'name' => 'Strength training',
+                'icon' => 'Dumbbell',
                 'description' => 'Complete a full-body strength session.',
                 'frequency' => HabitFrequency::WEEKLY,
                 'schedule' => ['days' => ['monday', 'wednesday', 'friday']],
@@ -110,9 +112,10 @@ class DatabaseSeeder extends Seeder
         $this->seedHabits($career, [
             [
                 'name' => 'Weekly review',
+                'icon' => 'ListChecks',
                 'description' => 'Review priorities, blockers, and progress every Friday.',
                 'frequency' => HabitFrequency::WEEKLY,
-                'schedule' => ['days' => ['friday'], 'time' => '16:00'],
+                'schedule' => ['days' => ['friday']],
                 'is_active' => true,
             ],
         ]);
@@ -120,16 +123,18 @@ class DatabaseSeeder extends Seeder
         $this->seedHabits($personalDevelopment, [
             [
                 'name' => 'Read for thirty minutes',
+                'icon' => 'BookOpen',
                 'description' => 'Read without notifications or other distractions.',
                 'frequency' => HabitFrequency::DAILY,
-                'schedule' => ['time' => '21:00'],
+                'schedule' => null,
                 'is_active' => true,
             ],
             [
                 'name' => 'Monthly reflection',
+                'icon' => 'NotebookPen',
                 'description' => 'Capture lessons, wins, and adjustments for the next month.',
                 'frequency' => HabitFrequency::MONTHLY,
-                'schedule' => ['day_of_month' => 28],
+                'schedule' => ['dates' => [28]],
                 'is_active' => true,
             ],
         ]);
