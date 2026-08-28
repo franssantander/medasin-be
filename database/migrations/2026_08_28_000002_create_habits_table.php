@@ -14,6 +14,7 @@ return new class extends Migration
             $table->uuid('uuid')->unique();
             $table->foreignId('area_id')->constrained()->cascadeOnDelete();
             $table->string('name', 120);
+            $table->string('icon', 50)->default('Repeat2');
             $table->text('description')->nullable();
             $table->enum('frequency', array_column(HabitFrequency::cases(), 'value'))->default(HabitFrequency::DAILY->value);
             $table->json('schedule')->nullable();

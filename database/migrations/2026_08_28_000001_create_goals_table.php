@@ -14,6 +14,7 @@ return new class extends Migration
             $table->uuid('uuid')->unique();
             $table->foreignId('area_id')->constrained()->cascadeOnDelete();
             $table->string('title', 120);
+            $table->string('icon', 50)->default('Target');
             $table->text('description')->nullable();
             $table->enum('status', array_column(GoalStatus::cases(), 'value'))->default(GoalStatus::PENDING->value);
             $table->date('start_date')->nullable();

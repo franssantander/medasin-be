@@ -24,6 +24,7 @@ return new class extends Migration
 
             $table->string('icon')->nullable();
             $table->string('background', 32)->nullable();
+            $table->string('background_image')->nullable();
 
             $table->text('description')->nullable();
 
