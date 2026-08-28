@@ -8,6 +8,8 @@ use App\Http\Requests\Area\StoreAreaRequest;
 use App\Http\Requests\Area\UpdateAreaRequest;
 use App\Models\Area;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 class AreaController extends Controller
@@ -49,9 +51,15 @@ class AreaController extends Controller
      */
     public function store(StoreAreaRequest $request)
     {
+        $attributes = Arr::except($request->validated(), ['background_image']);
+
+        if ($request->hasFile('background_image')) {
+            $attributes['background_image'] = $request->file('background_image')->store('areas/backgrounds', 'public');
+        }
+
         $data = $request->user()
             ->areas()
-            ->create($request->validated());
+            ->create($attributes);
 
         return $this->success($data, 'Successfully created area.', 201);
     }
@@ -81,7 +89,18 @@ class AreaController extends Controller
     {
         $area = $this->ownedArea($request->user(), $area);
         $this->ensureAreaIsMutable($area);
-        $area->update($request->validated());
+        $attributes = Arr::except($request->validated(), ['background_image']);
+
+        if ($request->hasFile('background_image')) {
+            $previousImage = $area->background_image;
+            $attributes['background_image'] = $request->file('background_image')->store('areas/backgrounds', 'public');
+
+            if ($previousImage) {
+                Storage::disk('public')->delete($previousImage);
+            }
+        }
+
+        $area->update($attributes);
 
         return $this->success($area->fresh(), 'Successfully updated area.');
     }
@@ -93,6 +112,9 @@ class AreaController extends Controller
     {
         $area = $this->ownedArea($request->user(), $area);
         $this->ensureAreaIsMutable($area);
+        if ($area->background_image) {
+            Storage::disk('public')->delete($area->background_image);
+        }
         $area->delete();
 
         return $this->success(null, 'Successfully deleted area.');

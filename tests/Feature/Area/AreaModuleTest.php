@@ -6,12 +6,40 @@ use App\Models\Project;
 use App\Models\Resource;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Passport\Passport;
 use Tests\TestCase;
 
 class AreaModuleTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_area_background_images_can_be_uploaded_and_replaced(): void
+    {
+        Storage::fake('public');
+        $user = User::factory()->create();
+        Passport::actingAs($user);
+
+        $response = $this->post(route('area.store'), [
+            'name' => 'Reflection',
+            'background_image' => UploadedFile::fake()->create('reflection.jpg', 120, 'image/jpeg'),
+        ])->assertCreated();
+
+        $area = $user->areas()->firstOrFail();
+        $originalPath = $area->background_image;
+        Storage::disk('public')->assertExists($originalPath);
+        $response->assertJsonPath('data.background_image_url', fn ($value) => str_contains($value, $originalPath));
+
+        $this->post(route('area.update', $area), [
+            '_method' => 'PUT',
+            'name' => 'Reflection',
+            'background_image' => UploadedFile::fake()->create('replacement.png', 120, 'image/png'),
+        ])->assertOk();
+
+        Storage::disk('public')->assertMissing($originalPath);
+        Storage::disk('public')->assertExists($area->fresh()->background_image);
+    }
 
     public function test_areas_can_be_filtered_archived_and_restored(): void
     {

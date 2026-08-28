@@ -5,6 +5,7 @@ namespace App\Http\Requests\Area;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rules\File;
 use Illuminate\Validation\Validator;
 
 class UpdateAreaRequest extends FormRequest
@@ -35,6 +36,7 @@ class UpdateAreaRequest extends FormRequest
             'name' => ['sometimes', 'required', 'string', 'max:120'],
             'icon' => ['nullable', 'string', 'max:50'],
             'background' => ['nullable', 'string', 'max:32'],
+            'background_image' => ['nullable', File::image()->max('5mb')],
             'description' => ['nullable', 'string'],
         ];
     }

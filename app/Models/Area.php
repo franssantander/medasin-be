@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 #[Fillable([
@@ -16,6 +17,7 @@ use Illuminate\Support\Str;
     'slug',
     'icon',
     'background',
+    'background_image',
     'description',
     'archived_at',
 ])]
@@ -23,11 +25,24 @@ class Area extends Model
 {
     use HasUuid, SoftDeletes;
 
+    protected $appends = [
+        'background_image_url',
+    ];
+
     protected function casts(): array
     {
         return [
             'archived_at' => 'datetime',
         ];
+    }
+
+    public function getBackgroundImageUrlAttribute(): ?string
+    {
+        if (! $this->background_image) {
+            return null;
+        }
+
+        return url(Storage::disk('public')->url($this->background_image));
     }
 
     protected static function booted(): void
