@@ -9,12 +9,13 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-#[Fillable(['title', 'description', 'status', 'start_date', 'due_date', 'completed_at'])]
+#[Fillable(['title', 'icon', 'description', 'status', 'start_date', 'due_date', 'completed_at'])]
 class Goal extends Model
 {
     use HasUuid, SoftDeletes;
 
     protected $attributes = [
+        'icon' => 'Target',
         'status' => GoalStatus::PENDING->value,
     ];
 
