@@ -32,6 +32,7 @@ class DatabaseSeeder extends Seeder
             'email' => 'test@example.com',
         ]);
 
+        $this->callWith(AreaSeeder::class, ['user' => $testUser]);
         $this->seedAreaInterconnections($testUser);
 
         $this->call([
@@ -41,30 +42,9 @@ class DatabaseSeeder extends Seeder
 
     private function seedAreaInterconnections(User $user): void
     {
-        $health = $this->area($user, 'Health', [
-            'icon' => 'heart-pulse',
-            'background' => '#DCFCE7',
-            'description' => 'Physical health, energy, fitness, and sustainable daily routines.',
-        ]);
-
-        $career = $this->area($user, 'Career', [
-            'icon' => 'briefcase-business',
-            'background' => '#DBEAFE',
-            'description' => 'Professional growth, meaningful work, and long-term career direction.',
-        ]);
-
-        $personalGrowth = $this->area($user, 'Personal Growth', [
-            'icon' => 'sprout',
-            'background' => '#F3E8FF',
-            'description' => 'Learning, reflection, creativity, and becoming more intentional.',
-        ]);
-
-        $travel = $this->area($user, 'Travel', [
-            'icon' => 'plane',
-            'background' => '#FFEDD5',
-            'description' => 'Past travel plans and experiences kept for future reference.',
-            'archived_at' => now()->subDays(30),
-        ]);
+        $health = $user->areas()->where('slug', 'health')->firstOrFail();
+        $career = $user->areas()->where('slug', 'career')->firstOrFail();
+        $personalDevelopment = $user->areas()->where('slug', 'personal-development')->firstOrFail();
 
         $this->seedGoals($health, [
             [
@@ -100,21 +80,13 @@ class DatabaseSeeder extends Seeder
             ],
         ]);
 
-        $this->seedGoals($personalGrowth, [
+        $this->seedGoals($personalDevelopment, [
             [
                 'title' => 'Read twelve books this year',
                 'description' => 'Alternate between practical nonfiction and literature.',
                 'status' => GoalStatus::IN_PROGRESS,
                 'start_date' => today()->startOfYear(),
                 'due_date' => today()->endOfYear(),
-            ],
-        ]);
-
-        $this->seedGoals($travel, [
-            [
-                'title' => 'Plan a Japan trip',
-                'description' => 'An archived idea retained as a future reference.',
-                'status' => GoalStatus::CANCELLED,
             ],
         ]);
 
@@ -145,7 +117,7 @@ class DatabaseSeeder extends Seeder
             ],
         ]);
 
-        $this->seedHabits($personalGrowth, [
+        $this->seedHabits($personalDevelopment, [
             [
                 'name' => 'Read for thirty minutes',
                 'description' => 'Read without notifications or other distractions.',
@@ -183,7 +155,7 @@ class DatabaseSeeder extends Seeder
             ],
         ]);
 
-        $this->seedNotes($personalGrowth, [
+        $this->seedNotes($personalDevelopment, [
             [
                 'title' => 'Books to read next',
                 'content' => 'Keep the list short and choose the next book before finishing the current one.',
@@ -208,7 +180,7 @@ class DatabaseSeeder extends Seeder
             'due_date' => today()->addMonth(),
         ]);
 
-        $readingProject = $this->project($user, 'Annual Reading List', $personalGrowth, [
+        $readingProject = $this->project($user, 'Annual Reading List', $personalDevelopment, [
             'description' => 'Curate and track this year’s reading list.',
             'icon' => 'library-big',
             'background' => '#F3E8FF',
@@ -257,7 +229,7 @@ class DatabaseSeeder extends Seeder
 
         $health->resources()->syncWithoutDetaching([$runningGuide->getKey()]);
         $career->resources()->syncWithoutDetaching([$careerBook->getKey()]);
-        $personalGrowth->resources()->syncWithoutDetaching([
+        $personalDevelopment->resources()->syncWithoutDetaching([
             $careerBook->getKey(),
             $reflectionTemplate->getKey(),
         ]);
@@ -268,17 +240,6 @@ class DatabaseSeeder extends Seeder
             $careerBook->getKey(),
             $reflectionTemplate->getKey(),
         ]);
-    }
-
-    /**
-     * @param  array<string, mixed>  $attributes
-     */
-    private function area(User $user, string $name, array $attributes): Area
-    {
-        return $user->areas()->updateOrCreate(
-            ['slug' => str($name)->slug()->toString()],
-            ['name' => $name, ...$attributes],
-        );
     }
 
     /**
