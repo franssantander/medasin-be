@@ -10,10 +10,8 @@ use App\Services\Project\ProjectService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-
 class ProjectController extends Controller
 {
-
     public function __construct(protected ProjectService $projectService) {}
 
     /**
@@ -74,6 +72,7 @@ class ProjectController extends Controller
      */
     public function update(UpdateProjectRequest $request, Project $project)
     {
+        $project = $request->user()->projects()->whereKey($project->getKey())->firstOrFail();
         $project->update($request->validated());
 
         return $this->success($project->fresh(), 'Successfully updated project.');
@@ -82,8 +81,9 @@ class ProjectController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(Project $project)
+    public function destroy(Request $request, Project $project)
     {
+        $project = $request->user()->projects()->whereKey($project->getKey())->firstOrFail();
         $project->delete();
 
         return $this->success(null, 'Successfully deleted project.');

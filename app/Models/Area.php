@@ -11,7 +11,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
 
-
 #[Fillable([
     'name',
     'slug',
@@ -44,7 +43,6 @@ class Area extends Model
         });
     }
 
-
     public function projects(): HasMany
     {
         return $this->hasMany(Project::class);
@@ -54,6 +52,21 @@ class Area extends Model
     {
         return $this->belongsToMany(Resource::class)
             ->withTimestamps();
+    }
+
+    public function goals(): HasMany
+    {
+        return $this->hasMany(Goal::class);
+    }
+
+    public function habits(): HasMany
+    {
+        return $this->hasMany(Habit::class);
+    }
+
+    public function notes(): HasMany
+    {
+        return $this->hasMany(Note::class);
     }
 
     public function user(): BelongsTo

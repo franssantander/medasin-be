@@ -5,7 +5,6 @@ namespace App\Models;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 
 use App\Models\Concerns\HasUuid;
-use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -18,7 +17,7 @@ use Laravel\Passport\HasApiTokens;
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
-    use HasFactory, HasUuid, Notifiable, HasApiTokens;
+    use HasApiTokens, HasFactory, HasUuid, Notifiable;
 
     /**
      * Get the attributes that should be cast.
@@ -41,5 +40,10 @@ class User extends Authenticatable
     public function projects(): HasMany
     {
         return $this->hasMany(Project::class);
+    }
+
+    public function resources(): HasMany
+    {
+        return $this->hasMany(Resource::class);
     }
 }

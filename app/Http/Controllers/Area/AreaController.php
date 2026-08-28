@@ -2,22 +2,36 @@
 
 namespace App\Http\Controllers\Area;
 
+use App\Http\Controllers\Area\Concerns\InteractsWithOwnedAreas;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Area\StoreAreaRequest;
 use App\Http\Requests\Area\UpdateAreaRequest;
 use App\Models\Area;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class AreaController extends Controller
 {
+    use InteractsWithOwnedAreas;
+
     /**
      * Display a listing of the resource.
      */
     public function index(Request $request)
     {
-        $data = $request->user()
-            ->areas()
-            ->get();
+        $validated = $request->validate([
+            'status' => ['sometimes', Rule::in(['active', 'archived', 'all'])],
+        ]);
+        $status = $validated['status'] ?? 'active';
+        $query = $request->user()->areas();
+
+        if ($status === 'active') {
+            $query->whereNull('archived_at');
+        } elseif ($status === 'archived') {
+            $query->whereNotNull('archived_at');
+        }
+
+        $data = $query->latest()->get();
 
         return $this->success($data);
     }
@@ -47,11 +61,7 @@ class AreaController extends Controller
      */
     public function show(Request $request, Area $area)
     {
-        $data = $request->user()
-            ->areas()
-            ->whereKey($area->getKey())
-            ->with(['projects', 'resources'])
-            ->firstOrFail();
+        $data = $this->ownedArea($request->user(), $area)->load(['projects', 'resources']);
 
         return $this->success($data);
     }
@@ -69,6 +79,8 @@ class AreaController extends Controller
      */
     public function update(UpdateAreaRequest $request, Area $area)
     {
+        $area = $this->ownedArea($request->user(), $area);
+        $this->ensureAreaIsMutable($area);
         $area->update($request->validated());
 
         return $this->success($area->fresh(), 'Successfully updated area.');
@@ -77,10 +89,34 @@ class AreaController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(Area $area)
+    public function destroy(Request $request, Area $area)
     {
+        $area = $this->ownedArea($request->user(), $area);
+        $this->ensureAreaIsMutable($area);
         $area->delete();
 
         return $this->success(null, 'Successfully deleted area.');
+    }
+
+    public function archive(Request $request, Area $area)
+    {
+        $area = $this->ownedArea($request->user(), $area);
+
+        if ($area->archived_at === null) {
+            $area->forceFill(['archived_at' => now()])->save();
+        }
+
+        return $this->success($area->fresh(), 'Successfully archived area.');
+    }
+
+    public function restore(Request $request, Area $area)
+    {
+        $area = $this->ownedArea($request->user(), $area);
+
+        if ($area->archived_at !== null) {
+            $area->forceFill(['archived_at' => null])->save();
+        }
+
+        return $this->success($area->fresh(), 'Successfully restored area.');
     }
 }
