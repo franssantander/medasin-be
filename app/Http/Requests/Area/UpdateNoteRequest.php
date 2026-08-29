@@ -17,6 +17,7 @@ class UpdateNoteRequest extends FormRequest
             'title' => ['sometimes', 'required', 'string', 'max:120'],
             'content' => ['sometimes', 'required', 'string'],
             'is_pinned' => ['sometimes', 'boolean'],
+            'parent_uuid' => ['sometimes', 'nullable', 'uuid'],
         ];
     }
 }

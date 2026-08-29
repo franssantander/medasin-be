@@ -4,15 +4,19 @@ namespace App\Http\Controllers\Area;
 
 use App\Http\Controllers\Area\Concerns\InteractsWithOwnedAreas;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Area\StoreNoteMediaRequest;
 use App\Http\Requests\Area\StoreNoteRequest;
 use App\Http\Requests\Area\UpdateNoteRequest;
 use App\Models\Area;
 use App\Models\Note;
+use App\Services\Area\NoteService;
 use Illuminate\Http\Request;
 
 class AreaNoteController extends Controller
 {
     use InteractsWithOwnedAreas;
+
+    public function __construct(private readonly NoteService $noteService) {}
 
     public function index(Request $request, Area $area)
     {
@@ -26,7 +30,7 @@ class AreaNoteController extends Controller
     {
         $area = $this->ownedArea($request->user(), $area);
         $this->ensureAreaIsMutable($area);
-        $note = $area->notes()->create($request->validated());
+        $note = $this->noteService->create($area, $request->validated());
 
         return $this->success($note, 'Successfully created note.', 201);
     }
@@ -43,17 +47,38 @@ class AreaNoteController extends Controller
         $area = $this->ownedArea($request->user(), $area);
         $this->ensureAreaIsMutable($area);
         $note = $area->notes()->whereKey($note->getKey())->firstOrFail();
-        $note->update($request->validated());
+        $note = $this->noteService->update($area, $note, $request->validated());
 
-        return $this->success($note->fresh(), 'Successfully updated note.');
+        return $this->success($note, 'Successfully updated note.');
     }
 
     public function destroy(Request $request, Area $area, Note $note)
     {
         $area = $this->ownedArea($request->user(), $area);
         $this->ensureAreaIsMutable($area);
-        $area->notes()->whereKey($note->getKey())->firstOrFail()->delete();
+        $note = $area->notes()->whereKey($note->getKey())->firstOrFail();
+        $this->noteService->deleteTree($note);
 
         return $this->success(null, 'Successfully deleted note.');
+    }
+
+    public function tree(Request $request, Area $area)
+    {
+        $area = $this->ownedArea($request->user(), $area);
+
+        return $this->success($this->noteService->tree($area));
+    }
+
+    public function storeMedia(StoreNoteMediaRequest $request, Area $area, Note $note)
+    {
+        $area = $this->ownedArea($request->user(), $area);
+        $this->ensureAreaIsMutable($area);
+        $note = $area->notes()->whereKey($note->getKey())->firstOrFail();
+
+        return $this->success(
+            $this->noteService->storeMedia($area, $note, $request->file('file')),
+            'Successfully uploaded note media.',
+            201,
+        );
     }
 }

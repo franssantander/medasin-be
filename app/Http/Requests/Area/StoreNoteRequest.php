@@ -17,6 +17,7 @@ class StoreNoteRequest extends FormRequest
             'title' => ['required', 'string', 'max:120'],
             'content' => ['required', 'string'],
             'is_pinned' => ['sometimes', 'boolean'],
+            'parent_uuid' => ['sometimes', 'nullable', 'uuid'],
         ];
     }
 }
