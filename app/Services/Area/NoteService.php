@@ -17,7 +17,7 @@ class NoteService
     public function tree(Area $area): array
     {
         $notes = $area->notes()
-            ->select(['id', 'uuid', 'parent_id', 'title', 'is_pinned', 'created_at', 'updated_at'])
+            ->select(['id', 'uuid', 'parent_id', 'title', 'content', 'is_pinned', 'created_at', 'updated_at'])
             ->orderByDesc('is_pinned')
             ->latest('updated_at')
             ->get();
@@ -30,6 +30,7 @@ class NoteService
                     'uuid' => $note->uuid,
                     'parent_uuid' => $note->parent_id ? $uuidById->get($note->parent_id) : null,
                     'title' => $note->title,
+                    'content' => $note->content,
                     'is_pinned' => $note->is_pinned,
                     'created_at' => $note->created_at,
                     'updated_at' => $note->updated_at,

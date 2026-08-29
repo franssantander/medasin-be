@@ -39,8 +39,14 @@ class AreaNoteEditorTest extends TestCase
         $this->getJson(route('area.notes.tree', $area))
             ->assertOk()
             ->assertJsonPath('data.0.uuid', $root['uuid'])
+            ->assertJsonPath('data.0.content', $this->document('Root content'))
             ->assertJsonPath('data.0.children.0.uuid', $child['uuid'])
-            ->assertJsonPath('data.0.children.0.children.0.uuid', $grandchild['uuid']);
+            ->assertJsonPath('data.0.children.0.content', $this->document('Child content'))
+            ->assertJsonPath('data.0.children.0.children.0.uuid', $grandchild['uuid'])
+            ->assertJsonPath(
+                'data.0.children.0.children.0.content',
+                $this->document('Grandchild content'),
+            );
     }
 
     public function test_note_parenting_rejects_cycles_and_notes_from_other_areas(): void
