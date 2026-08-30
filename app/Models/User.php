@@ -46,4 +46,9 @@ class User extends Authenticatable
     {
         return $this->hasMany(Resource::class);
     }
+
+    public function boards(): HasMany
+    {
+        return $this->hasMany(Board::class);
+    }
 }

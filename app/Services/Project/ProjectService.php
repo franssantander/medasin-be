@@ -6,6 +6,7 @@ use App\Data\Project\ProjectAreaData;
 use App\Data\Project\ProjectData;
 use App\Models\Project;
 use App\Models\User;
+use App\Services\Board\BoardService;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -13,6 +14,8 @@ use Illuminate\Validation\ValidationException;
 
 class ProjectService
 {
+    public function __construct(private readonly BoardService $boardService) {}
+
     public function create(User $user, ProjectData $data): Project
     {
         $request = $data->toArray();
@@ -36,6 +39,7 @@ class ProjectService
                 $project->area()->associate($area);
             }
             $project->save();
+            $this->boardService->createForProject($user, $project);
 
             return $project->load('area');
         });

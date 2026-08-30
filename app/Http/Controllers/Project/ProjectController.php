@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Project;
 
 use App\Data\Project\ProjectAreaData;
 use App\Data\Project\ProjectData;
+use App\Enum\BoardStageKey;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Project\StoreProjectRequest;
 use App\Http\Requests\Project\UpdateProjectAreaRequest;
 use App\Http\Requests\Project\UpdateProjectRequest;
+use App\Http\Resources\Project\ProjectDetailResource;
 use App\Http\Resources\Project\ProjectListCardResource;
 use App\Models\Project;
 use App\Services\Project\ProjectService;
@@ -36,7 +38,7 @@ class ProjectController extends Controller
             $query->whereNotNull('archived_at');
         }
 
-        $data = $query
+        $data = $this->withKanbanCounts($query)
             ->with(['area' => fn ($areaQuery) => $areaQuery->withCount('goals')])
             ->latest()
             ->get();
@@ -66,14 +68,20 @@ class ProjectController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(Request $request, Project $project)
+    public function show(Request $request, Project $project): JsonResponse
     {
-        $data = $request->user()
+        $data = $this->withKanbanCounts($request->user()
             ->projects()
-            ->whereKey($project->getKey())
+            ->whereKey($project->getKey()))
+            ->with([
+                'area' => fn ($query) => $query->withCount('goals'),
+                'boards' => fn ($query) => $query
+                    ->withCount('tasks')
+                    ->with(['stages' => fn ($stages) => $stages->withCount('tasks')]),
+            ])
             ->firstOrFail();
 
-        return $this->success($data);
+        return $this->success(ProjectDetailResource::make($data)->resolve($request));
     }
 
     /**
@@ -141,5 +149,16 @@ class ProjectController extends Controller
             ProjectListCardResource::make($data)->resolve($request),
             'Successfully updated project area.',
         );
+    }
+
+    private function withKanbanCounts($query)
+    {
+        return $query->withCount([
+            'boardTasks as total_tasks_count',
+            'boardTasks as done_tasks_count' => fn ($tasks) => $tasks->whereHas(
+                'stage',
+                fn ($stages) => $stages->where('key', BoardStageKey::DONE->value),
+            ),
+        ]);
     }
 }

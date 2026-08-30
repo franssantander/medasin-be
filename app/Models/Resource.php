@@ -49,4 +49,9 @@ class Resource extends Model
     {
         return $this->belongsTo(User::class);
     }
+
+    public function boardTasks(): BelongsToMany
+    {
+        return $this->belongsToMany(BoardTask::class, 'board_task_resource');
+    }
 }

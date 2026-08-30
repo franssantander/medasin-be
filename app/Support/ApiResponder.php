@@ -73,7 +73,7 @@ class ApiResponder
 
             case $exception instanceof HttpException:
                 $status = $exception->getStatusCode();
-                $message ??= 'The request could not be completed.';
+                $message ??= $exception->getMessage() ?: 'The request could not be completed.';
                 break;
 
             default:

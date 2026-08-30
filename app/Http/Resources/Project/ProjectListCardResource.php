@@ -13,7 +13,15 @@ class ProjectListCardResource extends JsonResource
     public function toArray(Request $request): array
     {
         $dueDate = $this->due_date;
-        $isOverdue = $dueDate !== null && $dueDate->isBefore(today());
+        $totalTasks = (int) ($this->total_tasks_count ?? 0);
+        $doneTasks = (int) ($this->done_tasks_count ?? 0);
+        $status = match (true) {
+            $totalTasks === 0 => 'not_started',
+            $doneTasks === $totalTasks => 'completed',
+            default => 'in_progress',
+        };
+        $progress = $totalTasks === 0 ? 0 : (int) round(($doneTasks / $totalTasks) * 100);
+        $isOverdue = $status !== 'completed' && $dueDate !== null && $dueDate->isBefore(today());
 
         return [
             'uuid' => $this->uuid,
@@ -22,8 +30,8 @@ class ProjectListCardResource extends JsonResource
             'description' => $this->description,
             'icon' => $this->icon,
             'background' => $this->background,
-            'status' => 'not_started',
-            'progress_percentage' => 0,
+            'status' => $status,
+            'progress_percentage' => $progress,
             'start_date' => $this->start_date?->toDateString(),
             'due_date' => $dueDate?->toDateString(),
             'is_overdue' => $isOverdue,
