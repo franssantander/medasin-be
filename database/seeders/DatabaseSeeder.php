@@ -170,7 +170,7 @@ class DatabaseSeeder extends Seeder
 
         $fitnessProject = $this->project($user, '10K Training Plan', $health, [
             'description' => 'An eight-week progressive running plan.',
-            'icon' => 'footprints',
+            'icon' => 'Footprints',
             'background' => '#DCFCE7',
             'status' => 'active',
             'start_date' => today()->subWeeks(2),
@@ -179,7 +179,7 @@ class DatabaseSeeder extends Seeder
 
         $portfolioProject = $this->project($user, 'Portfolio Refresh', $career, [
             'description' => 'Update case studies, profile copy, and selected work.',
-            'icon' => 'panels-top-left',
+            'icon' => 'PanelsTopLeft',
             'background' => '#DBEAFE',
             'status' => 'active',
             'due_date' => today()->addMonth(),
@@ -187,7 +187,7 @@ class DatabaseSeeder extends Seeder
 
         $readingProject = $this->project($user, 'Annual Reading List', $personalDevelopment, [
             'description' => 'Curate and track this year’s reading list.',
-            'icon' => 'library-big',
+            'icon' => 'LibraryBig',
             'background' => '#F3E8FF',
             'status' => 'active',
             'start_date' => today()->startOfYear(),
@@ -196,7 +196,7 @@ class DatabaseSeeder extends Seeder
 
         $this->project($user, 'Inbox Project', null, [
             'description' => 'An unassigned project ready to be linked to an Area.',
-            'icon' => 'inbox',
+            'icon' => 'Inbox',
             'background' => '#F1F5F9',
             'status' => 'active',
         ]);

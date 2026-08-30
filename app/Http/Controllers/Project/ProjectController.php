@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Project;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Project\StoreProjectRequest;
 use App\Http\Requests\Project\UpdateProjectRequest;
+use App\Http\Resources\Project\ProjectListCardResource;
 use App\Models\Project;
 use App\Services\Project\ProjectService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class ProjectController extends Controller
 {
@@ -19,12 +21,24 @@ class ProjectController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $data = $request->user()
-            ->projects()
-            ->with('area')
+        $validated = $request->validate([
+            'status' => ['sometimes', Rule::in(['active', 'archived', 'all'])],
+        ]);
+        $status = $validated['status'] ?? 'active';
+        $query = $request->user()->projects();
+
+        if ($status === 'active') {
+            $query->whereNull('archived_at');
+        } elseif ($status === 'archived') {
+            $query->whereNotNull('archived_at');
+        }
+
+        $data = $query
+            ->with(['area' => fn ($areaQuery) => $areaQuery->withCount('goals')])
+            ->latest()
             ->get();
 
-        return $this->success($data);
+        return $this->success(ProjectListCardResource::collection($data)->resolve($request));
     }
 
     /**
@@ -87,5 +101,27 @@ class ProjectController extends Controller
         $project->delete();
 
         return $this->success(null, 'Successfully deleted project.');
+    }
+
+    public function archive(Request $request, Project $project): JsonResponse
+    {
+        $project = $request->user()->projects()->whereKey($project->getKey())->firstOrFail();
+
+        if ($project->archived_at === null) {
+            $project->forceFill(['archived_at' => now()])->save();
+        }
+
+        return $this->success($project->fresh(), 'Successfully archived project.');
+    }
+
+    public function restore(Request $request, Project $project): JsonResponse
+    {
+        $project = $request->user()->projects()->whereKey($project->getKey())->firstOrFail();
+
+        if ($project->archived_at !== null) {
+            $project->forceFill(['archived_at' => null])->save();
+        }
+
+        return $this->success($project->fresh(), 'Successfully restored project.');
     }
 }
