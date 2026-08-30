@@ -45,10 +45,9 @@ class StoreProjectRequest extends FormRequest
             'area_uuid' => [
                 'nullable',
                 'uuid',
-                'required_without:area_name',
                 'prohibits:area_name',
                 Rule::exists('areas', 'uuid')->where(
-                    fn($query) => $query
+                    fn ($query) => $query
                         ->where('user_id', $this->user()->getKey())
                         ->whereNull('deleted_at'),
                 ),
@@ -57,7 +56,6 @@ class StoreProjectRequest extends FormRequest
                 'nullable',
                 'string',
                 'max:120',
-                'required_without:area_uuid',
                 'prohibits:area_uuid',
             ],
         ];

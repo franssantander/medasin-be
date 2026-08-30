@@ -35,6 +35,25 @@ class StoreProjectTest extends TestCase
         $this->assertDatabaseCount('areas', 1);
     }
 
+    public function test_a_project_can_be_created_in_the_inbox_without_an_area(): void
+    {
+        $user = User::factory()->create();
+        Passport::actingAs($user);
+
+        $this->postJson(route('project.store'), [
+            'name' => 'Unassigned Project',
+        ])->assertCreated()
+            ->assertJsonPath('data.name', 'Unassigned Project')
+            ->assertJsonPath('data.area', null);
+
+        $this->assertDatabaseHas('projects', [
+            'user_id' => $user->getKey(),
+            'area_id' => null,
+            'name' => 'Unassigned Project',
+        ]);
+        $this->assertDatabaseCount('areas', 0);
+    }
+
     public function test_an_existing_area_is_reused_when_creating_by_name(): void
     {
         $user = User::factory()->create();
@@ -81,19 +100,12 @@ class StoreProjectTest extends TestCase
         ]);
     }
 
-    public function test_an_area_is_required_and_must_belong_to_the_user(): void
+    public function test_an_assigned_area_must_belong_to_the_user(): void
     {
         $owner = User::factory()->create();
         $user = User::factory()->create();
         $foreignArea = $owner->areas()->create(['name' => 'Private']);
         Passport::actingAs($user);
-
-        $this->postJson(route('project.store'), [
-            'name' => 'Unassigned Project',
-        ])->assertUnprocessable()->assertJsonValidationErrors([
-            'area_uuid',
-            'area_name',
-        ]);
 
         $this->postJson(route('project.store'), [
             'name' => 'Foreign Project',

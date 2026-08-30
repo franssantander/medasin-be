@@ -21,7 +21,7 @@ class ProjectService
                 $area = $user->areas()
                     ->where('uuid', $request['area_uuid'])
                     ->firstOrFail();
-            } else {
+            } elseif (isset($request['area_name'])) {
                 $areaName = trim($request['area_name']);
                 $area = $user->areas()->firstOrCreate(
                     ['slug' => Str::slug($areaName)],
@@ -32,7 +32,9 @@ class ProjectService
             $project = $user->projects()->make(
                 Arr::except($request, ['area_uuid', 'area_name']),
             );
-            $project->area()->associate($area);
+            if (isset($area)) {
+                $project->area()->associate($area);
+            }
             $project->save();
 
             return $project->load('area');
@@ -46,6 +48,13 @@ class ProjectService
         $request = $data->toArray();
 
         return DB::transaction(function () use ($user, $project, $request) {
+            if (! isset($request['area_uuid']) && ! isset($request['area_name'])) {
+                $project->area()->dissociate();
+                $project->save();
+
+                return $project->fresh()->load('area');
+            }
+
             if (isset($request['area_uuid'])) {
                 $area = $user->areas()
                     ->whereNull('archived_at')

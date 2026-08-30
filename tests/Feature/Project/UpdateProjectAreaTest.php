@@ -63,6 +63,24 @@ class UpdateProjectAreaTest extends TestCase
         $this->assertDatabaseCount('areas', 1);
     }
 
+    public function test_an_assigned_project_can_be_moved_to_the_inbox(): void
+    {
+        $user = User::factory()->create();
+        $area = $user->areas()->create(['name' => 'Work']);
+        $project = $user->projects()->create([
+            'area_id' => $area->id,
+            'name' => 'Unassigned work',
+        ]);
+        Passport::actingAs($user);
+
+        $this->patchJson(route('project.area.update', $project), [])
+            ->assertOk()
+            ->assertJsonPath('data.area', null)
+            ->assertJsonPath('data.goals.count', 0);
+
+        $this->assertNull($project->fresh()->area_id);
+    }
+
     public function test_area_input_must_identify_exactly_one_available_owned_area(): void
     {
         $user = User::factory()->create();
@@ -74,10 +92,6 @@ class UpdateProjectAreaTest extends TestCase
         $deletedArea->delete();
         $foreignArea = $otherUser->areas()->create(['name' => 'Foreign']);
         Passport::actingAs($user);
-
-        $this->patchJson(route('project.area.update', $project), [])
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors(['area_uuid', 'area_name']);
 
         $this->patchJson(route('project.area.update', $project), [
             'area_uuid' => $activeArea->uuid,
