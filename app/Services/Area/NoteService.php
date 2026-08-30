@@ -2,6 +2,7 @@
 
 namespace App\Services\Area;
 
+use App\Data\Area\NoteData;
 use App\Models\Area;
 use App\Models\Note;
 use App\Models\NoteMedia;
@@ -43,16 +44,18 @@ class NoteService
         return $build(0);
     }
 
-    public function create(Area $area, array $attributes): Note
+    public function create(Area $area, NoteData $data): Note
     {
+        $attributes = $data->toArray();
         $parent = $this->resolveParent($area, Arr::pull($attributes, 'parent_uuid'));
         $attributes['parent_id'] = $parent?->getKey();
 
         return $area->notes()->create($attributes)->fresh();
     }
 
-    public function update(Area $area, Note $note, array $attributes): Note
+    public function update(Area $area, Note $note, NoteData $data): Note
     {
+        $attributes = $data->toArray();
         if (array_key_exists('parent_uuid', $attributes)) {
             $parent = $this->resolveParent($area, Arr::pull($attributes, 'parent_uuid'), $note);
             $attributes['parent_id'] = $parent?->getKey();

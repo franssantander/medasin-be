@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Area;
 
+use App\Data\Area\LinkProjectData;
 use App\Http\Controllers\Area\Concerns\InteractsWithOwnedAreas;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Area\LinkProjectRequest;
@@ -24,8 +25,9 @@ class AreaProjectController extends Controller
     {
         $area = $this->ownedArea($request->user(), $area);
         $this->ensureAreaIsMutable($area);
+        $data = LinkProjectData::from($request->validated());
         $project = $request->user()->projects()
-            ->where('uuid', $request->validated('project_uuid'))
+            ->where('uuid', $data->project_uuid)
             ->firstOrFail();
         $project->area()->associate($area);
         $project->save();

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Resource;
 
+use App\Data\Resource\ResourceData;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -16,6 +17,10 @@ class ResourceController extends Controller
             ->latest()
             ->get();
 
-        return $this->success($resources);
+        $data = $resources
+            ->map(fn ($resource) => ResourceData::fromModel($resource)->toArray())
+            ->all();
+
+        return $this->success($data);
     }
 }

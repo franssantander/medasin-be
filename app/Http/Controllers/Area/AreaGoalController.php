@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Area;
 
+use App\Data\Area\GoalData;
 use App\Enum\GoalStatus;
 use App\Http\Controllers\Area\Concerns\InteractsWithOwnedAreas;
 use App\Http\Controllers\Controller;
@@ -48,7 +49,7 @@ class AreaGoalController extends Controller
     {
         $area = $this->ownedArea($request->user(), $area);
         $this->ensureAreaIsMutable($area);
-        $goal = $area->goals()->create($this->goalData($request->validated()));
+        $goal = $area->goals()->create($this->goalData(GoalData::from($request->validated())->toArray()));
 
         return $this->success($goal, 'Successfully created goal.', 201);
     }
@@ -65,7 +66,7 @@ class AreaGoalController extends Controller
         $area = $this->ownedArea($request->user(), $area);
         $this->ensureAreaIsMutable($area);
         $goal = $area->goals()->whereKey($goal->getKey())->firstOrFail();
-        $goal->update($this->goalData($request->validated(), $goal));
+        $goal->update($this->goalData(GoalData::from($request->validated())->toArray(), $goal));
 
         return $this->success($goal->fresh(), 'Successfully updated goal.');
     }

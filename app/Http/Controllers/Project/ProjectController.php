@@ -2,8 +2,11 @@
 
 namespace App\Http\Controllers\Project;
 
+use App\Data\Project\ProjectAreaData;
+use App\Data\Project\ProjectData;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Project\StoreProjectRequest;
+use App\Http\Requests\Project\UpdateProjectAreaRequest;
 use App\Http\Requests\Project\UpdateProjectRequest;
 use App\Http\Resources\Project\ProjectListCardResource;
 use App\Models\Project;
@@ -55,7 +58,7 @@ class ProjectController extends Controller
     public function store(StoreProjectRequest $request): JsonResponse
     {
         $user = $request->user();
-        $data = $this->projectService->create($user, $request->validated());
+        $data = $this->projectService->create($user, ProjectData::from($request->validated()));
 
         return $this->success($data, 'Successfully created project.', 201);
     }
@@ -87,7 +90,7 @@ class ProjectController extends Controller
     public function update(UpdateProjectRequest $request, Project $project)
     {
         $project = $request->user()->projects()->whereKey($project->getKey())->firstOrFail();
-        $project->update($request->validated());
+        $project->update(ProjectData::from($request->validated())->toArray());
 
         return $this->success($project->fresh(), 'Successfully updated project.');
     }
@@ -123,5 +126,20 @@ class ProjectController extends Controller
         }
 
         return $this->success($project->fresh(), 'Successfully restored project.');
+    }
+
+    public function updateArea(UpdateProjectAreaRequest $request, Project $project): JsonResponse
+    {
+        $project = $request->user()->projects()->whereKey($project->getKey())->firstOrFail();
+        $data = $this->projectService->updateArea(
+            $request->user(),
+            $project,
+            ProjectAreaData::from($request->validated()),
+        );
+
+        return $this->success(
+            ProjectListCardResource::make($data)->resolve($request),
+            'Successfully updated project area.',
+        );
     }
 }

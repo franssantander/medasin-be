@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Area;
 
+use App\Data\Area\HabitData;
 use App\Http\Controllers\Area\Concerns\InteractsWithOwnedAreas;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Area\StoreHabitRequest;
@@ -27,7 +28,7 @@ class AreaHabitController extends Controller
     {
         $area = $this->ownedArea($request->user(), $area);
         $this->ensureAreaIsMutable($area);
-        $data = $request->validated();
+        $data = HabitData::from($request->validated())->toArray();
         $this->validateSchedule($data);
         $habit = $area->habits()->create($data);
 
@@ -46,7 +47,7 @@ class AreaHabitController extends Controller
         $area = $this->ownedArea($request->user(), $area);
         $this->ensureAreaIsMutable($area);
         $habit = $area->habits()->whereKey($habit->getKey())->firstOrFail();
-        $data = $request->validated();
+        $data = HabitData::from($request->validated())->toArray();
         $this->validateSchedule($data, $habit);
         $habit->update($data);
 

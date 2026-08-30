@@ -12,6 +12,7 @@ Route::prefix('project')
         Route::post('/', 'store')->name('store');
         Route::get('/{project}', 'show')->name('show');
         Route::put('/{project}', 'update')->name('update');
+        Route::patch('/{project}/area', 'updateArea')->name('area.update');
         Route::delete('/{project}', 'destroy')->name('destroy');
         Route::post('/{project}/archive', 'archive')->name('archive');
         Route::post('/{project}/restore', 'restore')->name('restore');

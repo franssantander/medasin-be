@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Area;
 
+use App\Data\Area\NoteData;
 use App\Http\Controllers\Area\Concerns\InteractsWithOwnedAreas;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Area\StoreNoteMediaRequest;
@@ -30,7 +31,7 @@ class AreaNoteController extends Controller
     {
         $area = $this->ownedArea($request->user(), $area);
         $this->ensureAreaIsMutable($area);
-        $note = $this->noteService->create($area, $request->validated());
+        $note = $this->noteService->create($area, NoteData::from($request->validated()));
 
         return $this->success($note, 'Successfully created note.', 201);
     }
@@ -47,7 +48,7 @@ class AreaNoteController extends Controller
         $area = $this->ownedArea($request->user(), $area);
         $this->ensureAreaIsMutable($area);
         $note = $area->notes()->whereKey($note->getKey())->firstOrFail();
-        $note = $this->noteService->update($area, $note, $request->validated());
+        $note = $this->noteService->update($area, $note, NoteData::from($request->validated()));
 
         return $this->success($note, 'Successfully updated note.');
     }

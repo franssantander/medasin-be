@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Area;
 
+use App\Data\Area\AreaData;
 use App\Http\Controllers\Area\Concerns\InteractsWithOwnedAreas;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Area\StoreAreaRequest;
@@ -51,7 +52,7 @@ class AreaController extends Controller
      */
     public function store(StoreAreaRequest $request)
     {
-        $attributes = Arr::except($request->validated(), ['background_image']);
+        $attributes = AreaData::from(Arr::except($request->validated(), ['background_image']))->toArray();
 
         if ($request->hasFile('background_image')) {
             $attributes['background_image'] = $request->file('background_image')->store('areas/backgrounds', 'public');
@@ -89,7 +90,7 @@ class AreaController extends Controller
     {
         $area = $this->ownedArea($request->user(), $area);
         $this->ensureAreaIsMutable($area);
-        $attributes = Arr::except($request->validated(), ['background_image']);
+        $attributes = AreaData::from(Arr::except($request->validated(), ['background_image']))->toArray();
 
         if ($request->hasFile('background_image')) {
             $previousImage = $area->background_image;

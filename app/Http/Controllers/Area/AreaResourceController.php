@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Area;
 
+use App\Data\Area\LinkResourceData;
 use App\Http\Controllers\Area\Concerns\InteractsWithOwnedAreas;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Area\LinkResourceRequest;
@@ -24,8 +25,9 @@ class AreaResourceController extends Controller
     {
         $area = $this->ownedArea($request->user(), $area);
         $this->ensureAreaIsMutable($area);
+        $data = LinkResourceData::from($request->validated());
         $resource = $request->user()->resources()
-            ->where('uuid', $request->validated('resource_uuid'))
+            ->where('uuid', $data->resource_uuid)
             ->firstOrFail();
         $area->resources()->syncWithoutDetaching([$resource->getKey()]);
 
