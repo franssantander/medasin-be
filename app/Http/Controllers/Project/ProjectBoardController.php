@@ -74,7 +74,12 @@ class ProjectBoardController extends Controller
             ->load([
                 'labels',
                 'stages' => fn ($query) => $query->withCount('tasks')->with([
-                    'tasks' => fn ($tasks) => $tasks->with(['stage', 'labels', 'resources', 'notes'])->orderBy('position'),
+                    'tasks' => fn ($tasks) => $tasks->with([
+                        'stage',
+                        'labels',
+                        'resources.areas',
+                        'notes.area',
+                    ])->orderBy('position'),
                 ]),
             ]);
     }

@@ -64,6 +64,7 @@ class ProjectKanbanBoardTest extends TestCase
         $area = $user->areas()->create(['name' => 'Work']);
         $note = $area->notes()->create(['title' => 'Research', 'content' => 'Notes']);
         $resource = $user->resources()->create(['title' => 'Specification']);
+        $area->resources()->attach($resource);
         Passport::actingAs($user);
 
         $labelUuid = $this->postJson(route('project.boards.labels.store', [$project, $board]), [
@@ -84,7 +85,11 @@ class ProjectKanbanBoardTest extends TestCase
             ->assertJsonPath('data.position', 0)
             ->assertJsonPath('data.labels.0.name', 'Backend')
             ->assertJsonPath('data.resources.0.uuid', $resource->uuid)
+            ->assertJsonPath('data.resources.0.areas.0.uuid', $area->uuid)
+            ->assertJsonPath('data.resources.0.areas.0.name', 'Work')
             ->assertJsonPath('data.notes.0.uuid', $note->uuid)
+            ->assertJsonPath('data.notes.0.area.uuid', $area->uuid)
+            ->assertJsonPath('data.notes.0.area.name', 'Work')
             ->json('data.uuid');
 
         $secondTaskUuid = $this->postJson(route('project.boards.tasks.store', [$project, $board]), [

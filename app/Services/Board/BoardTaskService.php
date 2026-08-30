@@ -147,6 +147,11 @@ class BoardTaskService
 
     private function loadTask(BoardTask $task): BoardTask
     {
-        return $task->fresh()->load(['stage', 'labels', 'resources', 'notes']);
+        return $task->fresh()->load([
+            'stage',
+            'labels',
+            'resources.areas',
+            'notes.area',
+        ]);
     }
 }

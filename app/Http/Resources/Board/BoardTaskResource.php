@@ -21,10 +21,22 @@ class BoardTaskResource extends JsonResource
                 'uuid' => $resource->uuid,
                 'title' => $resource->title,
                 'type' => $resource->type,
+                'areas' => $resource->areas->map(fn ($area) => [
+                    'uuid' => $area->uuid,
+                    'name' => $area->name,
+                ])->values(),
+                'created_at' => $resource->created_at?->toISOString(),
+                'updated_at' => $resource->updated_at?->toISOString(),
             ])),
             'notes' => $this->whenLoaded('notes', fn () => $this->notes->map(fn ($note) => [
                 'uuid' => $note->uuid,
                 'title' => $note->title,
+                'area' => [
+                    'uuid' => $note->area->uuid,
+                    'name' => $note->area->name,
+                ],
+                'created_at' => $note->created_at?->toISOString(),
+                'updated_at' => $note->updated_at?->toISOString(),
             ])),
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),

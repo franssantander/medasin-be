@@ -25,7 +25,7 @@ class ProjectBoardTaskController extends Controller
         $project = $this->ownedProject($request->user(), $project);
         $board = $this->ownedBoard($project, $board);
         $tasks = $board->tasks()
-            ->with(['stage', 'labels', 'resources', 'notes'])
+            ->with(['stage', 'labels', 'resources.areas', 'notes.area'])
             ->join('board_stages', 'board_stages.id', '=', 'board_tasks.board_stage_id')
             ->orderBy('board_stages.position')
             ->orderBy('board_tasks.position')
@@ -49,7 +49,12 @@ class ProjectBoardTaskController extends Controller
     {
         $project = $this->ownedProject($request->user(), $project);
         $board = $this->ownedBoard($project, $board);
-        $task = $this->boardTask($board, $task)->load(['stage', 'labels', 'resources', 'notes']);
+        $task = $this->boardTask($board, $task)->load([
+            'stage',
+            'labels',
+            'resources.areas',
+            'notes.area',
+        ]);
 
         return $this->success(BoardTaskResource::make($task)->resolve($request));
     }
