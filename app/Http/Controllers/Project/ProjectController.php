@@ -128,12 +128,12 @@ class ProjectController extends Controller
     public function restore(Request $request, Project $project): JsonResponse
     {
         $project = $request->user()->projects()->whereKey($project->getKey())->firstOrFail();
+        $result = $this->projectService->restore($project);
+        $message = $result['moved_to_inbox']
+            ? 'Successfully restored project to Inbox because its previous area is unavailable.'
+            : 'Successfully restored project.';
 
-        if ($project->archived_at !== null) {
-            $project->forceFill(['archived_at' => null])->save();
-        }
-
-        return $this->success($project->fresh(), 'Successfully restored project.');
+        return $this->success($result['project'], $message);
     }
 
     public function updateArea(UpdateProjectAreaRequest $request, Project $project): JsonResponse

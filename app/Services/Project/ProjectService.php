@@ -22,14 +22,31 @@ class ProjectService
         $data = DB::transaction(function () use ($request, $user) {
             if (isset($request['area_uuid'])) {
                 $area = $user->areas()
+                    ->whereNull('archived_at')
                     ->where('uuid', $request['area_uuid'])
                     ->firstOrFail();
             } elseif (isset($request['area_name'])) {
                 $areaName = trim($request['area_name']);
-                $area = $user->areas()->firstOrCreate(
-                    ['slug' => Str::slug($areaName)],
-                    ['name' => $areaName],
-                );
+                $slug = Str::slug($areaName);
+                $area = $user->areas()
+                    ->whereNull('archived_at')
+                    ->where('slug', $slug)
+                    ->first();
+
+                if (! $area) {
+                    $unavailableAreaExists = $user->areas()
+                        ->withTrashed()
+                        ->where('slug', $slug)
+                        ->exists();
+
+                    if ($unavailableAreaExists) {
+                        throw ValidationException::withMessages([
+                            'area_name' => 'An unavailable area with this name already exists.',
+                        ]);
+                    }
+
+                    $area = $user->areas()->create(['name' => $areaName]);
+                }
             }
 
             $project = $user->projects()->make(
@@ -91,6 +108,28 @@ class ProjectService
             return $project->fresh()->load([
                 'area' => fn ($query) => $query->withCount('goals'),
             ]);
+        });
+    }
+
+    /**
+     * @return array{project: Project, moved_to_inbox: bool}
+     */
+    public function restore(Project $project): array
+    {
+        return DB::transaction(function () use ($project): array {
+            $movedToInbox = $project->area_id !== null
+                && ! $project->area()->whereNull('archived_at')->exists();
+
+            if ($movedToInbox) {
+                $project->area()->dissociate();
+            }
+
+            $project->forceFill(['archived_at' => null])->save();
+
+            return [
+                'project' => $project->fresh(),
+                'moved_to_inbox' => $movedToInbox,
+            ];
         });
     }
 }

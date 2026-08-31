@@ -114,4 +114,38 @@ class StoreProjectTest extends TestCase
 
         $this->assertDatabaseCount('projects', 0);
     }
+
+    public function test_a_project_cannot_be_created_in_an_archived_area(): void
+    {
+        $user = User::factory()->create();
+        $archivedArea = $user->areas()->create([
+            'name' => 'Archived',
+            'archived_at' => now(),
+        ]);
+        Passport::actingAs($user);
+
+        $this->postJson(route('project.store'), [
+            'name' => 'Unavailable project',
+            'area_uuid' => $archivedArea->uuid,
+        ])->assertUnprocessable()->assertJsonValidationErrors('area_uuid');
+
+        $this->assertDatabaseCount('projects', 0);
+    }
+
+    public function test_an_archived_area_name_cannot_be_reused_when_creating_a_project(): void
+    {
+        $user = User::factory()->create();
+        $user->areas()->create([
+            'name' => 'Archived',
+            'archived_at' => now(),
+        ]);
+        Passport::actingAs($user);
+
+        $this->postJson(route('project.store'), [
+            'name' => 'Unavailable project',
+            'area_name' => 'Archived',
+        ])->assertUnprocessable()->assertJsonValidationErrors('area_name');
+
+        $this->assertDatabaseCount('projects', 0);
+    }
 }

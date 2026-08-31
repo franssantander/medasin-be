@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Area\StoreAreaRequest;
 use App\Http\Requests\Area\UpdateAreaRequest;
 use App\Models\Area;
+use App\Services\Area\AreaService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Storage;
@@ -16,6 +17,8 @@ use Illuminate\Validation\Rule;
 class AreaController extends Controller
 {
     use InteractsWithOwnedAreas;
+
+    public function __construct(private readonly AreaService $areaService) {}
 
     /**
      * Display a listing of the resource.
@@ -124,12 +127,15 @@ class AreaController extends Controller
     public function archive(Request $request, Area $area)
     {
         $area = $this->ownedArea($request->user(), $area);
+        $movedProjectsCount = $this->areaService->archive($area);
+        $message = 'Successfully archived area.';
 
-        if ($area->archived_at === null) {
-            $area->forceFill(['archived_at' => now()])->save();
+        if ($movedProjectsCount > 0) {
+            $projectLabel = $movedProjectsCount === 1 ? 'project' : 'projects';
+            $message .= " {$movedProjectsCount} active {$projectLabel} moved to Inbox.";
         }
 
-        return $this->success($area->fresh(), 'Successfully archived area.');
+        return $this->success($area->fresh(), $message);
     }
 
     public function restore(Request $request, Area $area)

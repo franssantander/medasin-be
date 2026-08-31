@@ -49,6 +49,7 @@ class StoreProjectRequest extends FormRequest
                 Rule::exists('areas', 'uuid')->where(
                     fn ($query) => $query
                         ->where('user_id', $this->user()->getKey())
+                        ->whereNull('archived_at')
                         ->whereNull('deleted_at'),
                 ),
             ],

@@ -123,6 +123,65 @@ class ProjectListTest extends TestCase
             ->assertJsonCount(1, 'data');
     }
 
+    public function test_restoring_a_project_keeps_an_active_area_assignment(): void
+    {
+        $user = User::factory()->create();
+        $area = $user->areas()->create(['name' => 'Career']);
+        $project = $this->createProject($user, [
+            'name' => 'Prepare portfolio',
+            'archived_at' => now(),
+        ], $area);
+        Passport::actingAs($user);
+
+        $this->postJson(route('project.restore', $project))
+            ->assertOk()
+            ->assertJsonPath('message', 'Successfully restored project.');
+
+        $this->assertSame($area->getKey(), $project->fresh()->area_id);
+        $this->assertNull($project->fresh()->archived_at);
+    }
+
+    public function test_restoring_a_project_from_an_archived_area_moves_it_to_inbox(): void
+    {
+        $user = User::factory()->create();
+        $area = $user->areas()->create([
+            'name' => 'Career',
+            'archived_at' => now(),
+        ]);
+        $project = $this->createProject($user, [
+            'name' => 'Prepare portfolio',
+            'archived_at' => now(),
+        ], $area);
+        Passport::actingAs($user);
+
+        $this->postJson(route('project.restore', $project))
+            ->assertOk()
+            ->assertJsonPath(
+                'message',
+                'Successfully restored project to Inbox because its previous area is unavailable.',
+            );
+
+        $this->assertNull($project->fresh()->area_id);
+        $this->assertNull($project->fresh()->archived_at);
+    }
+
+    public function test_restoring_a_project_from_a_deleted_area_moves_it_to_inbox(): void
+    {
+        $user = User::factory()->create();
+        $area = $user->areas()->create(['name' => 'Career']);
+        $project = $this->createProject($user, [
+            'name' => 'Prepare portfolio',
+            'archived_at' => now(),
+        ], $area);
+        $area->delete();
+        Passport::actingAs($user);
+
+        $this->postJson(route('project.restore', $project))->assertOk();
+
+        $this->assertNull($project->fresh()->area_id);
+        $this->assertNull($project->fresh()->archived_at);
+    }
+
     /**
      * @param  array<string, mixed>  $attributes
      */

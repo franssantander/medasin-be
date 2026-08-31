@@ -67,6 +67,34 @@ class AreaModuleTest extends TestCase
         $this->assertNull($active->fresh()->archived_at);
     }
 
+    public function test_archiving_an_area_moves_only_its_active_projects_to_inbox(): void
+    {
+        $user = User::factory()->create();
+        $area = $user->areas()->create(['name' => 'Career']);
+        $activeProject = $user->projects()->make(['name' => 'Find a mentor']);
+        $activeProject->area()->associate($area);
+        $activeProject->save();
+        $archivedProject = $user->projects()->make([
+            'name' => 'Previous role',
+            'archived_at' => now(),
+        ]);
+        $archivedProject->area()->associate($area);
+        $archivedProject->save();
+        Passport::actingAs($user);
+
+        $this->postJson(route('area.archive', $area))
+            ->assertOk()
+            ->assertJsonPath('message', 'Successfully archived area. 1 active project moved to Inbox.');
+
+        $this->assertNotNull($area->fresh()->archived_at);
+        $this->assertNull($activeProject->fresh()->area_id);
+        $this->assertSame($area->getKey(), $archivedProject->fresh()->area_id);
+
+        $this->postJson(route('area.archive', $area))
+            ->assertOk()
+            ->assertJsonPath('message', 'Successfully archived area.');
+    }
+
     public function test_area_names_are_trimmed_and_unique_by_slug_for_each_user(): void
     {
         $user = User::factory()->create();
