@@ -2,6 +2,8 @@
 
 namespace Database\Seeders;
 
+use App\Enum\BoardStageKey;
+use App\Enum\BoardTaskPriority;
 use App\Enum\GoalStatus;
 use App\Enum\HabitFrequency;
 use App\Models\Area;
@@ -9,6 +11,7 @@ use App\Models\Project;
 use App\Models\Resource;
 use App\Models\User;
 use App\Services\Board\BoardService;
+use App\Services\Board\BoardTaskService;
 use Illuminate\Database\Seeder;
 
 class DemoUserSeeder extends Seeder
@@ -38,6 +41,10 @@ class DemoUserSeeder extends Seeder
         $health = $user->areas()->where('slug', 'health')->firstOrFail();
         $career = $user->areas()->where('slug', 'career')->firstOrFail();
         $personalDevelopment = $user->areas()->where('slug', 'personal-development')->firstOrFail();
+        $work = $user->areas()->where('slug', 'work')->firstOrFail();
+        $spiritual = $user->areas()->where('slug', 'spiritual')->firstOrFail();
+        $business = $user->areas()->where('slug', 'business')->firstOrFail();
+        $finances = $user->areas()->where('slug', 'finances')->firstOrFail();
 
         $this->seedGoals($health, [
             [
@@ -194,6 +201,93 @@ class DemoUserSeeder extends Seeder
             'status' => 'active',
         ]);
 
+        $releaseProject = $this->project($user, 'Product Release Roadmap', $work, [
+            'description' => 'Coordinate the next product release from planning through launch.',
+            'icon' => 'Rocket',
+            'background' => self::PROJECT_BADGE_BACKGROUND,
+            'status' => 'active',
+            'start_date' => today()->subWeek(),
+            'due_date' => today()->addWeeks(5),
+        ]);
+
+        $emergencyFundProject = $this->project($user, 'Emergency Fund Plan', $finances, [
+            'description' => 'Build a dependable emergency fund through clear monthly milestones.',
+            'icon' => 'PiggyBank',
+            'background' => self::PROJECT_BADGE_BACKGROUND,
+            'status' => 'active',
+            'start_date' => today()->startOfMonth(),
+            'due_date' => today()->addMonths(6),
+        ]);
+
+        $businessGrowthProject = $this->project($user, 'Small Business Growth Plan', $business, [
+            'description' => 'Test practical opportunities to improve customer reach and retention.',
+            'icon' => 'ChartNoAxesCombined',
+            'background' => self::PROJECT_BADGE_BACKGROUND,
+            'status' => 'active',
+            'due_date' => today()->addMonths(3),
+        ]);
+
+        $mindfulnessProject = $this->project($user, 'Mindfulness Practice', $spiritual, [
+            'description' => 'Establish a simple and sustainable mindfulness practice.',
+            'icon' => 'Sparkles',
+            'background' => self::PROJECT_BADGE_BACKGROUND,
+            'status' => 'active',
+            'start_date' => today()->subWeeks(3),
+            'due_date' => today()->addMonths(2),
+        ]);
+
+        $this->seedBoardTasks($user, $fitnessProject, [
+            $this->boardTask('Choose a local 10K race', 'Compare dates, routes, and registration deadlines.', BoardStageKey::BACKLOG, BoardTaskPriority::LOW),
+            $this->boardTask('Plan weekly running sessions', 'Schedule easy runs, intervals, and recovery days.', BoardStageKey::TODOS, BoardTaskPriority::HIGH),
+            $this->boardTask('Complete the current training week', 'Follow the planned mileage while monitoring recovery.', BoardStageKey::IN_PROGRESS, BoardTaskPriority::HIGH),
+            $this->boardTask('Buy comfortable running shoes', 'Select shoes suited to the training volume and gait.', BoardStageKey::TODOS, BoardTaskPriority::MEDIUM),
+        ]);
+
+        $this->seedBoardTasks($user, $portfolioProject, [
+            $this->boardTask('Collect testimonials', 'Request concise feedback from recent collaborators.', BoardStageKey::DONE, BoardTaskPriority::LOW),
+            $this->boardTask('Rewrite profile summary', 'Describe strengths, focus areas, and measurable impact.', BoardStageKey::TODOS, BoardTaskPriority::HIGH),
+            $this->boardTask('Draft release case study', 'Turn the latest release into a clear problem-and-outcome narrative.', BoardStageKey::IN_PROGRESS, BoardTaskPriority::HIGH),
+            $this->boardTask('Select featured projects', 'Choose the strongest work samples for the portfolio.', BoardStageKey::DONE, BoardTaskPriority::MEDIUM),
+        ]);
+
+        $this->seedBoardTasks($user, $readingProject, [
+            $this->boardTask('Add award-winning fiction', 'Research a short list of recent literary award winners.', BoardStageKey::DONE, BoardTaskPriority::LOW),
+            $this->boardTask('Choose the next book', 'Pick a title before finishing the current book.', BoardStageKey::TODOS, BoardTaskPriority::HIGH),
+            $this->boardTask('Read the current selection', 'Keep a steady daily reading session and capture useful notes.', BoardStageKey::IN_PROGRESS, BoardTaskPriority::MEDIUM),
+            $this->boardTask('Organize existing book list', 'Remove duplicates and group titles by theme.', BoardStageKey::DONE, BoardTaskPriority::LOW),
+        ]);
+
+        $this->seedBoardTasks($user, $releaseProject, [
+            $this->boardTask('Plan post-launch review', 'Prepare the metrics and questions for the release retrospective.', BoardStageKey::DONE, BoardTaskPriority::MEDIUM),
+            $this->boardTask('Finish release checklist', 'Confirm ownership for deployment, support, and communications.', BoardStageKey::DONE, BoardTaskPriority::HIGH),
+            $this->boardTask('Run final acceptance testing', 'Validate critical user journeys against the release candidate.', BoardStageKey::IN_PROGRESS, BoardTaskPriority::HIGH),
+            $this->boardTask('Confirm release scope', 'Agree on the features and fixes included in this release.', BoardStageKey::DONE, BoardTaskPriority::HIGH),
+            $this->boardTask('Prepare release notes', 'Summarize customer-facing improvements and important changes.', BoardStageKey::DONE, BoardTaskPriority::MEDIUM),
+        ]);
+
+        $this->seedBoardTasks($user, $emergencyFundProject, [
+            $this->boardTask('Compare savings accounts', 'Review rates, access rules, and account fees.', BoardStageKey::BACKLOG, BoardTaskPriority::LOW),
+            $this->boardTask('Automate monthly transfer', 'Schedule a recurring transfer after each payday.', BoardStageKey::TODOS, BoardTaskPriority::HIGH),
+            $this->boardTask('Reduce one recurring expense', 'Cancel or renegotiate a low-value monthly expense.', BoardStageKey::IN_PROGRESS, BoardTaskPriority::MEDIUM),
+            $this->boardTask('Calculate the fund target', 'Set the target from essential monthly expenses.', BoardStageKey::DONE, BoardTaskPriority::HIGH),
+            $this->boardTask('Create a monthly savings report', 'Track deposits and compare the balance with the target.', BoardStageKey::BACKLOG, BoardTaskPriority::LOW),
+        ]);
+
+        $this->seedBoardTasks($user, $businessGrowthProject, [
+            $this->boardTask('Research a referral program', 'Compare lightweight incentives for customer referrals.', BoardStageKey::BACKLOG, BoardTaskPriority::MEDIUM),
+            $this->boardTask('Interview five customers', 'Ask customers what creates value and what causes friction.', BoardStageKey::TODOS, BoardTaskPriority::HIGH),
+            $this->boardTask('Test a new landing page', 'Measure whether clearer positioning improves inquiries.', BoardStageKey::IN_PROGRESS, BoardTaskPriority::HIGH),
+            $this->boardTask('Review quarterly metrics', 'Summarize acquisition, retention, and revenue trends.', BoardStageKey::DONE, BoardTaskPriority::MEDIUM),
+            $this->boardTask('Draft a retention experiment', 'Outline a small test for improving repeat customer activity.', BoardStageKey::BACKLOG, BoardTaskPriority::MEDIUM),
+        ]);
+
+        $this->seedBoardTasks($user, $mindfulnessProject, [
+            $this->boardTask('Explore a guided course', 'Compare beginner-friendly mindfulness course options.', BoardStageKey::DONE, BoardTaskPriority::LOW),
+            $this->boardTask('Create a quiet practice space', 'Choose a comfortable place with minimal distractions.', BoardStageKey::DONE, BoardTaskPriority::MEDIUM),
+            $this->boardTask('Practice ten minutes daily', 'Use a simple breath-focused session each morning.', BoardStageKey::DONE, BoardTaskPriority::HIGH),
+            $this->boardTask('Choose a meditation timer', 'Set up a timer with a gentle start and finish.', BoardStageKey::DONE, BoardTaskPriority::LOW),
+        ]);
+
         $runningGuide = $this->resource($user, 'Beginner 10K Training Guide', [
             'type' => 'article',
             'description' => 'A reference for structuring weekly running volume.',
@@ -294,6 +388,42 @@ class DemoUserSeeder extends Seeder
         }
 
         return $project;
+    }
+
+    /**
+     * @param  list<array{title: string, description: string, stage: string, priority: string}>  $tasks
+     */
+    private function seedBoardTasks(User $user, Project $project, array $tasks): void
+    {
+        $board = $project->boards()->firstOrFail();
+        $taskService = app(BoardTaskService::class);
+
+        foreach ($tasks as $task) {
+            $existingTask = $board->tasks()->where('title', $task['title'])->first();
+
+            if ($existingTask) {
+                $taskService->update($user, $board, $existingTask, $task);
+            } else {
+                $taskService->create($user, $board, $task);
+            }
+        }
+    }
+
+    /**
+     * @return array{title: string, description: string, stage: string, priority: string}
+     */
+    private function boardTask(
+        string $title,
+        string $description,
+        BoardStageKey $stage,
+        BoardTaskPriority $priority,
+    ): array {
+        return [
+            'title' => $title,
+            'description' => $description,
+            'stage' => $stage->value,
+            'priority' => $priority->value,
+        ];
     }
 
     /**
