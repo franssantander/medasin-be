@@ -6,3 +6,11 @@ use Illuminate\Support\Facades\Route;
 Route::get('resource', [ResourceController::class, 'index'])
     ->middleware('auth:api')
     ->name('resource.index');
+
+Route::middleware('auth:api')->group(function () {
+    Route::post('resource', [ResourceController::class, 'store'])->name('resource.store');
+    Route::get('resource/tags', [ResourceController::class, 'tags'])->name('resource.tags');
+    Route::post('resource/{resource:uuid}/archive', [ResourceController::class, 'archive'])->name('resource.archive');
+    Route::post('resource/{resource:uuid}/restore', [ResourceController::class, 'restore'])->name('resource.restore');
+    Route::get('resource/{resource:uuid}/attachments/{attachment}', [ResourceController::class, 'attachment'])->name('resource.attachments.show');
+});

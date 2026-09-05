@@ -1,0 +1,223 @@
+<?php
+
+namespace Tests\Feature\Resource;
+
+use App\Models\Resource;
+use App\Models\ResourceAttachment;
+use App\Models\ResourceTag;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
+use Tests\TestCase;
+
+class ResourceModuleTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_creation_persists_mixed_content_tags_and_associations(): void
+    {
+        Storage::fake('local');
+        $user = User::factory()->create();
+        $area = $user->areas()->create(['name' => 'Work']);
+        $project = $user->projects()->create(['name' => 'Launch']);
+        $existing = ResourceTag::create(['user_id' => $user->id, 'name' => 'Work', 'normalized_name' => 'work']);
+        $content = ['type' => 'doc', 'content' => [['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Useful knowledge']]]]];
+
+        $response = $this->actingAs($user, 'api')->post(route('resource.store'), [
+            'title' => 'Reference',
+            'content' => json_encode($content),
+            'links' => ['https://example.com/guide'],
+            'files' => [UploadedFile::fake()->createWithContent('guide.txt', 'Reference file'), UploadedFile::fake()->createWithContent('photo.png', base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII='))],
+            'tag_uuids' => [$existing->uuid],
+            'tag_names' => [' WORK ', 'Research'],
+            'project_uuid' => $project->uuid,
+            'area_uuid' => $area->uuid,
+        ], ['Accept' => 'application/json'])->assertCreated()
+            ->assertJsonPath('data.content', $content)
+            ->assertJsonPath('data.types', ['file', 'image', 'link', 'note'])
+            ->assertJsonCount(2, 'data.tags')
+            ->assertJsonPath('data.projects.0.name', 'Launch')
+            ->assertJsonPath('data.areas.0.name', 'Work');
+
+        $resource = Resource::where('uuid', $response->json('data.uuid'))->firstOrFail();
+        $this->assertSame($user->id, $resource->user_id);
+        $this->assertSame('Useful knowledge', $resource->content_text);
+        $this->assertCount(2, Storage::disk('local')->allFiles());
+        $this->assertDatabaseCount('resource_tags', 2);
+        $this->assertArrayNotHasKey('path', $response->json('data.attachments.1'));
+        $this->getJson(route('resource.tags'))->assertOk()->assertJsonCount(2, 'data');
+    }
+
+    public function test_title_only_creation_and_authentication(): void
+    {
+        $this->postJson(route('resource.store'), ['title' => 'Reference'])->assertUnauthorized();
+        $this->getJson(route('resource.tags'))->assertUnauthorized();
+        $this->actingAs(User::factory()->create(), 'api')->postJson(route('resource.store'), ['title' => 'Reference'])
+            ->assertCreated()->assertJsonPath('data.types', []);
+    }
+
+    public function test_owner_can_archive_a_resource_idempotently(): void
+    {
+        $user = User::factory()->create();
+        $resource = $user->resources()->create(['title' => 'Reference']);
+
+        $this->actingAs($user, 'api')
+            ->postJson(route('resource.archive', $resource->uuid))
+            ->assertOk()
+            ->assertJsonPath('message', 'Successfully archived resource.')
+            ->assertJsonPath('data.uuid', $resource->uuid);
+
+        $archivedAt = $resource->fresh()->archived_at;
+        $this->assertNotNull($archivedAt);
+
+        $this->postJson(route('resource.archive', $resource->uuid))->assertOk();
+        $this->assertTrue($archivedAt->equalTo($resource->fresh()->archived_at));
+        $this->getJson(route('resource.index'))->assertJsonPath('data.total', 0);
+    }
+
+    public function test_resource_archive_requires_authentication_and_ownership(): void
+    {
+        $owner = User::factory()->create();
+        $resource = $owner->resources()->create(['title' => 'Private']);
+
+        $this->postJson(route('resource.archive', $resource->uuid))->assertUnauthorized();
+        $this->actingAs(User::factory()->create(), 'api')
+            ->postJson(route('resource.archive', $resource->uuid))
+            ->assertNotFound();
+        $this->assertNull($resource->fresh()->archived_at);
+    }
+
+    public function test_owner_can_restore_a_resource_idempotently(): void
+    {
+        $user = User::factory()->create();
+        $resource = $user->resources()->create([
+            'title' => 'Archived reference',
+            'archived_at' => now(),
+        ]);
+
+        $this->actingAs($user, 'api')
+            ->postJson(route('resource.restore', $resource->uuid))
+            ->assertOk()
+            ->assertJsonPath('message', 'Successfully restored resource.')
+            ->assertJsonPath('data.uuid', $resource->uuid)
+            ->assertJsonPath('data.archived_at', null);
+
+        $this->assertNull($resource->fresh()->archived_at);
+        $this->postJson(route('resource.restore', $resource->uuid))->assertOk();
+        $this->getJson(route('resource.index'))->assertJsonPath('data.total', 1);
+    }
+
+    public function test_resource_restore_requires_authentication_and_ownership(): void
+    {
+        $owner = User::factory()->create();
+        $resource = $owner->resources()->create([
+            'title' => 'Private archive',
+            'archived_at' => now(),
+        ]);
+
+        $this->postJson(route('resource.restore', $resource->uuid))->assertUnauthorized();
+        $this->actingAs(User::factory()->create(), 'api')
+            ->postJson(route('resource.restore', $resource->uuid))
+            ->assertNotFound();
+        $this->assertNotNull($resource->fresh()->archived_at);
+    }
+
+    public function test_creation_rejects_invalid_input_and_foreign_associations(): void
+    {
+        $user = User::factory()->create();
+        $other = User::factory()->create();
+        $area = $other->areas()->create(['name' => 'Private']);
+        $project = $other->projects()->create(['name' => 'Private']);
+        $tag = ResourceTag::create(['user_id' => $other->id, 'name' => 'Private', 'normalized_name' => 'private']);
+        $this->actingAs($user, 'api')->postJson(route('resource.store'), [
+            'title' => '', 'content' => 'invalid json', 'links' => ['javascript:alert(1)'],
+            'area_uuid' => $area->uuid, 'project_uuid' => $project->uuid, 'tag_uuids' => [$tag->uuid],
+        ])->assertUnprocessable()->assertJsonValidationErrors(['title', 'content', 'links.0', 'area_uuid', 'project_uuid', 'tag_uuids.0']);
+        $area->forceFill(['user_id' => $user->id, 'archived_at' => now()])->save();
+        $project->forceFill(['user_id' => $user->id, 'archived_at' => now()])->save();
+        $this->postJson(route('resource.store'), ['title' => 'Test', 'area_uuid' => $area->uuid, 'project_uuid' => $project->uuid])
+            ->assertUnprocessable()->assertJsonValidationErrors(['area_uuid', 'project_uuid']);
+        $this->assertDatabaseCount('resources', 0);
+        $this->getJson(route('resource.tags'))->assertOk()->assertJsonCount(0, 'data');
+        $this->getJson(route('resource.index', ['tag_uuid' => $tag->uuid]))->assertUnprocessable()->assertJsonValidationErrors('tag_uuid');
+    }
+
+    public function test_upload_limits_and_transaction_cleanup(): void
+    {
+        Storage::fake('local');
+        $this->actingAs(User::factory()->create(), 'api')->post(route('resource.store'), [
+            'title' => 'Oversized', 'files' => [UploadedFile::fake()->create('large.pdf', 20481)],
+        ], ['Accept' => 'application/json'])->assertUnprocessable()->assertJsonValidationErrors('files.0');
+
+        ResourceAttachment::creating(function () {
+            throw new \RuntimeException('Simulated attachment persistence failure');
+        });
+        try {
+            $this->post(route('resource.store'), [
+                'title' => 'Failed', 'files' => [UploadedFile::fake()->createWithContent('file.txt', 'content')],
+                'tag_names' => ['Failed tag'],
+            ], ['Accept' => 'application/json'])->assertServerError();
+        } finally {
+            ResourceAttachment::flushEventListeners();
+            ResourceAttachment::clearBootedModels();
+        }
+        $this->assertDatabaseCount('resources', 0);
+        $this->assertDatabaseCount('resource_attachments', 0);
+        $this->assertSame([], Storage::disk('local')->allFiles());
+    }
+
+    public function test_private_downloads_require_owner_and_matching_resource(): void
+    {
+        Storage::fake('local');
+        $user = User::factory()->create();
+        $resource = $user->resources()->create(['title' => 'Private']);
+        Storage::disk('local')->put('resources/test.txt', 'secret');
+        $attachment = $resource->attachments()->create(['kind' => 'file', 'path' => 'resources/test.txt', 'original_name' => 'test.txt', 'mime_type' => 'text/plain']);
+        $url = route('resource.attachments.show', [$resource->uuid, $attachment->uuid]);
+        $this->getJson($url)->assertUnauthorized();
+        $this->actingAs(User::factory()->create(), 'api')->getJson($url)->assertNotFound();
+        $this->actingAs($user, 'api')->get($url)->assertOk()->assertDownload('test.txt');
+        $another = $user->resources()->create(['title' => 'Other']);
+        $this->getJson(route('resource.attachments.show', [$another->uuid, $attachment->uuid]))->assertNotFound();
+    }
+
+    public function test_pagination_and_combined_filters_preserve_matching_records(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user, 'api');
+        for ($i = 0; $i < 3; $i++) {
+            $this->postJson(route('resource.store'), [
+                'title' => "Reference {$i}", 'links' => ['https://example.com'],
+                'content' => ['type' => 'doc', 'content' => [['text' => 'Needle']]], 'tag_names' => ['Research'],
+            ])->assertCreated();
+        }
+        $tag = ResourceTag::first();
+        $query = ['per_page' => 2, 'search' => 'NEEDLE', 'type' => 'link', 'tag_uuid' => $tag->uuid];
+        $first = $this->getJson(route('resource.index', $query))->assertOk()
+            ->assertJsonPath('data.total', 3)->assertJsonCount(2, 'data.data')->assertJsonPath('data.data.0.title', 'Reference 2');
+        $this->getJson($first->json('data.next_page_url'))->assertOk()->assertJsonCount(1, 'data.data')->assertJsonPath('data.next_page_url', null);
+        $this->getJson(route('resource.index', [...$query, 'page' => 3]))->assertOk()->assertJsonCount(0, 'data.data');
+        $this->getJson(route('resource.index', [...$query, 'type' => 'image']))->assertOk()->assertJsonPath('data.total', 0);
+        $this->getJson(route('resource.index', ['per_page' => 101, 'page' => 0, 'type' => 'bad']))->assertUnprocessable()->assertJsonValidationErrors(['per_page', 'page', 'type']);
+    }
+
+    public function test_search_covers_legacy_fields_attachments_tags_and_literal_wildcards(): void
+    {
+        $user = User::factory()->create();
+        $resource = $user->resources()->create(['title' => '100% guide', 'description' => 'Legacy description', 'type' => 'file', 'url' => 'https://legacy.example.com']);
+        $resource->attachments()->create(['kind' => 'image', 'original_name' => 'Diagram.png']);
+        $tag = ResourceTag::create(['user_id' => $user->id, 'name' => 'Research', 'normalized_name' => 'research']);
+        $resource->tags()->attach($tag);
+        $deleted = $user->resources()->create(['title' => 'Deleted']);
+        $deleted->delete();
+        $this->actingAs($user, 'api');
+        foreach (['100%', 'DESCRIPTION', 'legacy.example', 'diagram', 'research'] as $search) {
+            $this->getJson(route('resource.index', ['search' => $search]))->assertOk()->assertJsonPath('data.total', 1);
+        }
+        foreach (['file', 'link', 'image'] as $type) {
+            $this->getJson(route('resource.index', ['type' => $type]))->assertOk()->assertJsonPath('data.total', 1);
+        }
+        $this->getJson(route('resource.index'))->assertJsonPath('data.total', 1);
+    }
+}

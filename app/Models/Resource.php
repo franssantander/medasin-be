@@ -7,12 +7,15 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 #[Fillable([
     'title',
     'type',
     'description',
+    'content',
+    'content_text',
     'url',
     'author',
     'source',
@@ -28,6 +31,7 @@ class Resource extends Model
     protected function casts(): array
     {
         return [
+            'content' => 'array',
             'is_favorite' => 'boolean',
             'archived_at' => 'datetime',
         ];
@@ -37,6 +41,16 @@ class Resource extends Model
     {
         return $this->belongsToMany(Project::class)
             ->withTimestamps();
+    }
+
+    public function attachments(): HasMany
+    {
+        return $this->hasMany(ResourceAttachment::class);
+    }
+
+    public function tags(): BelongsToMany
+    {
+        return $this->belongsToMany(ResourceTag::class);
     }
 
     public function areas(): BelongsToMany

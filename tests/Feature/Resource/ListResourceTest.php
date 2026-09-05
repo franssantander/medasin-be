@@ -28,8 +28,17 @@ class ListResourceTest extends TestCase
         $this->actingAs($user, 'api')
             ->getJson(route('resource.index'))
             ->assertOk()
-            ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.uuid', $active->uuid);
+            ->assertJsonCount(1, 'data.data')
+            ->assertJsonPath('data.data.0.uuid', $active->uuid);
+
+        $this->getJson(route('resource.index', ['status' => 'archived']))
+            ->assertOk()
+            ->assertJsonCount(1, 'data.data')
+            ->assertJsonPath('data.data.0.uuid', $archived->uuid);
+
+        $this->getJson(route('resource.index', ['status' => 'invalid']))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('status');
     }
 
     public function test_resource_index_requires_authentication(): void
