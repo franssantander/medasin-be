@@ -188,6 +188,39 @@ class ProjectKanbanBoardTest extends TestCase
             ->assertJsonMissing(['uuid' => $taskOnly->uuid]);
     }
 
+    public function test_resources_can_be_linked_directly_to_an_active_project(): void
+    {
+        [$user, $project] = $this->projectWithBoard();
+        $first = $user->resources()->create(['title' => 'First resource']);
+        $second = $user->resources()->create(['title' => 'Second resource']);
+        $archived = $user->resources()->create([
+            'title' => 'Archived resource',
+            'archived_at' => now(),
+        ]);
+        $foreign = User::factory()->create()->resources()->create(['title' => 'Private resource']);
+
+        $this->postJson(route('project.resources.store', $project), [
+            'resource_uuids' => [$first->uuid, $second->uuid],
+        ])->assertOk()
+            ->assertJsonPath('message', 'Successfully linked resources to project.');
+
+        $this->postJson(route('project.resources.store', $project), [
+            'resource_uuids' => [$first->uuid],
+        ])->assertOk();
+        $this->assertSame(2, $project->resources()->count());
+
+        foreach ([$archived, $foreign] as $invalidResource) {
+            $this->postJson(route('project.resources.store', $project), [
+                'resource_uuids' => [$invalidResource->uuid],
+            ])->assertUnprocessable()->assertJsonValidationErrors('resource_uuids.0');
+        }
+
+        $this->postJson(route('project.archive', $project))->assertOk();
+        $this->postJson(route('project.resources.store', $project), [
+            'resource_uuids' => [$first->uuid],
+        ])->assertConflict();
+    }
+
     /**
      * @return array{User, Project, Board}
      */

@@ -6,6 +6,7 @@ use App\Data\Project\ProjectAreaData;
 use App\Data\Project\ProjectData;
 use App\Enum\BoardStageKey;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Project\Concerns\InteractsWithOwnedProjects;
 use App\Http\Requests\Project\StoreProjectRequest;
 use App\Http\Requests\Project\UpdateProjectAreaRequest;
 use App\Http\Requests\Project\UpdateProjectRequest;
@@ -20,6 +21,8 @@ use Illuminate\Validation\Rule;
 
 class ProjectController extends Controller
 {
+    use InteractsWithOwnedProjects;
+
     public function __construct(
         protected ProjectService $projectService,
         protected ResourceService $resourceService,
@@ -171,6 +174,31 @@ class ProjectController extends Controller
             ProjectListCardResource::make($data)->resolve($request),
             'Successfully updated project area.',
         );
+    }
+
+    public function attachResources(Request $request, Project $project): JsonResponse
+    {
+        $project = $this->ownedProject($request->user(), $project);
+        $this->ensureProjectIsMutable($project);
+        $validated = $request->validate([
+            'resource_uuids' => ['required', 'array', 'min:1', 'max:100'],
+            'resource_uuids.*' => [
+                'required',
+                'uuid',
+                'distinct',
+                Rule::exists('resources', 'uuid')->where(fn ($query) => $query
+                    ->where('user_id', $request->user()->getKey())
+                    ->whereNull('archived_at')
+                    ->whereNull('deleted_at')),
+            ],
+        ]);
+        $resourceIds = $request->user()->resources()
+            ->whereNull('archived_at')
+            ->whereIn('uuid', $validated['resource_uuids'])
+            ->pluck('resources.id');
+        $project->resources()->syncWithoutDetaching($resourceIds);
+
+        return $this->success(null, 'Successfully linked resources to project.');
     }
 
     private function withKanbanCounts($query)
