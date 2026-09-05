@@ -51,4 +51,9 @@ class User extends Authenticatable
     {
         return $this->hasMany(Board::class);
     }
+
+    public function trashEntries(): HasMany
+    {
+        return $this->hasMany(TrashEntry::class);
+    }
 }

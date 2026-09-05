@@ -21,6 +21,16 @@ Laravel is a web application framework with expressive, elegant syntax. We belie
 
 Laravel is accessible, powerful, and provides tools required for large, robust applications.
 
+## Scheduled tasks
+
+Deleted user content remains recoverable for 30 days. Production must run Laravel's scheduler so the hourly `trash:prune` task permanently removes expired records and their stored files:
+
+```bash
+php artisan schedule:run
+```
+
+Configure the command through the host's standard once-per-minute cron entry or run `php artisan schedule:work` under the application's process manager.
+
 ## Learning Laravel
 
 Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.

@@ -72,7 +72,7 @@ class AreaNoteEditorTest extends TestCase
         ])->assertUnprocessable()->assertJsonValidationErrors('parent_uuid');
     }
 
-    public function test_note_media_is_validated_stored_and_deleted_with_its_note_tree(): void
+    public function test_note_media_is_validated_and_retained_while_its_note_tree_is_in_trash(): void
     {
         Storage::fake('public');
         $user = User::factory()->create();
@@ -102,8 +102,9 @@ class AreaNoteEditorTest extends TestCase
 
         $this->assertSoftDeleted('notes', ['id' => $note->getKey()]);
         $this->assertSoftDeleted('notes', ['id' => $child->getKey()]);
-        $this->assertDatabaseCount('note_media', 0);
-        $paths->each(fn (string $path) => Storage::disk('public')->assertMissing($path));
+        $this->assertDatabaseCount('note_media', 2);
+        $this->assertDatabaseHas('trash_entries', ['subject_uuid' => $note->uuid, 'item_type' => 'note']);
+        $paths->each(fn (string $path) => Storage::disk('public')->assertExists($path));
     }
 
     public function test_archived_areas_reject_note_media_uploads(): void

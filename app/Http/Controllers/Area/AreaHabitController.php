@@ -9,6 +9,7 @@ use App\Http\Requests\Area\StoreHabitRequest;
 use App\Http\Requests\Area\UpdateHabitRequest;
 use App\Models\Area;
 use App\Models\Habit;
+use App\Services\Trash\TrashService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -16,6 +17,8 @@ use Illuminate\Validation\ValidationException;
 class AreaHabitController extends Controller
 {
     use InteractsWithOwnedAreas;
+
+    public function __construct(private readonly TrashService $trashService) {}
 
     public function index(Request $request, Area $area)
     {
@@ -58,9 +61,10 @@ class AreaHabitController extends Controller
     {
         $area = $this->ownedArea($request->user(), $area);
         $this->ensureAreaIsMutable($area);
-        $area->habits()->whereKey($habit->getKey())->firstOrFail()->delete();
+        $habit = $area->habits()->whereKey($habit->getKey())->firstOrFail();
+        $this->trashService->delete($request->user(), $habit, 'habit', $habit->name, $area->name);
 
-        return $this->success(null, 'Successfully deleted habit.');
+        return $this->success(null, 'Habit moved to Trash. It will be permanently deleted after 30 days.');
     }
 
     public function history(Request $request, Area $area, Habit $habit)

@@ -15,6 +15,7 @@ use App\Http\Resources\Project\ProjectListCardResource;
 use App\Models\Project;
 use App\Services\Project\ProjectService;
 use App\Services\Resource\ResourceService;
+use App\Services\Trash\TrashService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -26,6 +27,7 @@ class ProjectController extends Controller
     public function __construct(
         protected ProjectService $projectService,
         protected ResourceService $resourceService,
+        protected TrashService $trashService,
     ) {}
 
     /**
@@ -134,9 +136,9 @@ class ProjectController extends Controller
     public function destroy(Request $request, Project $project)
     {
         $project = $request->user()->projects()->whereKey($project->getKey())->firstOrFail();
-        $project->delete();
+        $this->trashService->delete($request->user(), $project, 'project', $project->name, $project->area?->name);
 
-        return $this->success(null, 'Successfully deleted project.');
+        return $this->success(null, 'Project moved to Trash. It will be permanently deleted after 30 days.');
     }
 
     public function archive(Request $request, Project $project): JsonResponse

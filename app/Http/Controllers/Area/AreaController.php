@@ -9,6 +9,7 @@ use App\Http\Requests\Area\StoreAreaRequest;
 use App\Http\Requests\Area\UpdateAreaRequest;
 use App\Models\Area;
 use App\Services\Area\AreaService;
+use App\Services\Trash\TrashService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Storage;
@@ -18,7 +19,10 @@ class AreaController extends Controller
 {
     use InteractsWithOwnedAreas;
 
-    public function __construct(private readonly AreaService $areaService) {}
+    public function __construct(
+        private readonly AreaService $areaService,
+        private readonly TrashService $trashService,
+    ) {}
 
     /**
      * Display a listing of the resource.
@@ -116,12 +120,9 @@ class AreaController extends Controller
     {
         $area = $this->ownedArea($request->user(), $area);
         $this->ensureAreaIsMutable($area);
-        if ($area->background_image) {
-            Storage::disk('public')->delete($area->background_image);
-        }
-        $area->delete();
+        $this->trashService->delete($request->user(), $area, 'area', $area->name);
 
-        return $this->success(null, 'Successfully deleted area.');
+        return $this->success(null, 'Area moved to Trash. It will be permanently deleted after 30 days.');
     }
 
     public function archive(Request $request, Area $area)

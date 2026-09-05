@@ -11,13 +11,17 @@ use App\Http\Requests\Area\UpdateNoteRequest;
 use App\Models\Area;
 use App\Models\Note;
 use App\Services\Area\NoteService;
+use App\Services\Trash\TrashService;
 use Illuminate\Http\Request;
 
 class AreaNoteController extends Controller
 {
     use InteractsWithOwnedAreas;
 
-    public function __construct(private readonly NoteService $noteService) {}
+    public function __construct(
+        private readonly NoteService $noteService,
+        private readonly TrashService $trashService,
+    ) {}
 
     public function index(Request $request, Area $area)
     {
@@ -58,9 +62,9 @@ class AreaNoteController extends Controller
         $area = $this->ownedArea($request->user(), $area);
         $this->ensureAreaIsMutable($area);
         $note = $area->notes()->whereKey($note->getKey())->firstOrFail();
-        $this->noteService->deleteTree($note);
+        $this->trashService->deleteNoteTree($request->user(), $area, $note);
 
-        return $this->success(null, 'Successfully deleted note.');
+        return $this->success(null, 'Note and its subpages moved to Trash. They will be permanently deleted after 30 days.');
     }
 
     public function tree(Request $request, Area $area)

@@ -11,13 +11,17 @@ use App\Http\Requests\Resource\StoreResourceRequest;
 use App\Http\Requests\Resource\UpdateResourceRequest;
 use App\Models\Resource;
 use App\Services\Resource\ResourceService;
+use App\Services\Trash\TrashService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
 class ResourceController extends Controller
 {
-    public function __construct(private ResourceService $service) {}
+    public function __construct(
+        private ResourceService $service,
+        private TrashService $trashService,
+    ) {}
 
     public function index(ListResourceRequest $request): JsonResponse
     {
@@ -56,7 +60,14 @@ class ResourceController extends Controller
     {
         $resource = $request->user()->resources()->whereKey($resource->getKey())->whereNull('archived_at')->firstOrFail();
 
-        return $this->success($this->service->deleteAttachment($resource, $attachment), 'Successfully removed attachment.');
+        $attachment = $resource->attachments()->where('uuid', $attachment)->firstOrFail();
+        $title = $attachment->original_name ?: $attachment->url ?: 'Resource attachment';
+        $this->trashService->delete($request->user(), $attachment, 'resource_attachment', $title, $resource->title);
+
+        return $this->success(
+            $this->service->serialize($resource->fresh(['attachments', 'tags', 'projects', 'areas'])),
+            'Attachment moved to Trash. It will be permanently deleted after 30 days.',
+        );
     }
 
     public function tags(Request $request): JsonResponse

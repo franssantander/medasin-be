@@ -10,11 +10,14 @@ use App\Http\Resources\Board\BoardLabelResource;
 use App\Models\Board;
 use App\Models\BoardLabel;
 use App\Models\Project;
+use App\Services\Trash\TrashService;
 use Illuminate\Http\Request;
 
 class ProjectBoardLabelController extends Controller
 {
     use InteractsWithOwnedProjects;
+
+    public function __construct(private readonly TrashService $trashService) {}
 
     public function index(Request $request, Project $project, Board $board)
     {
@@ -50,8 +53,9 @@ class ProjectBoardLabelController extends Controller
         $project = $this->ownedProject($request->user(), $project);
         $this->ensureProjectIsMutable($project);
         $board = $this->ownedBoard($project, $board);
-        $this->boardLabel($board, $label)->delete();
+        $label = $this->boardLabel($board, $label);
+        $this->trashService->delete($request->user(), $label, 'board_label', $label->name, "{$project->name} · {$board->name}");
 
-        return $this->success(null, 'Successfully deleted board label.');
+        return $this->success(null, 'Label moved to Trash. It will be permanently deleted after 30 days.');
     }
 }

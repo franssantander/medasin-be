@@ -12,13 +12,17 @@ use App\Models\Board;
 use App\Models\BoardTask;
 use App\Models\Project;
 use App\Services\Board\BoardTaskService;
+use App\Services\Trash\TrashService;
 use Illuminate\Http\Request;
 
 class ProjectBoardTaskController extends Controller
 {
     use InteractsWithOwnedProjects;
 
-    public function __construct(private readonly BoardTaskService $taskService) {}
+    public function __construct(
+        private readonly BoardTaskService $taskService,
+        private readonly TrashService $trashService,
+    ) {}
 
     public function index(Request $request, Project $project, Board $board)
     {
@@ -76,9 +80,9 @@ class ProjectBoardTaskController extends Controller
         $this->ensureProjectIsMutable($project);
         $board = $this->ownedBoard($project, $board);
         $task = $this->boardTask($board, $task);
-        $this->taskService->delete($task);
+        $this->trashService->delete($request->user(), $task, 'task', $task->title, "{$project->name} · {$board->name}");
 
-        return $this->success(null, 'Successfully deleted board task.');
+        return $this->success(null, 'Task moved to Trash. It will be permanently deleted after 30 days.');
     }
 
     public function move(MoveBoardTaskRequest $request, Project $project, Board $board, BoardTask $task)

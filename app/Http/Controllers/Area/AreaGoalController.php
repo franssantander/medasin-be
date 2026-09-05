@@ -10,12 +10,15 @@ use App\Http\Requests\Area\StoreGoalRequest;
 use App\Http\Requests\Area\UpdateGoalRequest;
 use App\Models\Area;
 use App\Models\Goal;
+use App\Services\Trash\TrashService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 class AreaGoalController extends Controller
 {
     use InteractsWithOwnedAreas;
+
+    public function __construct(private readonly TrashService $trashService) {}
 
     public function index(Request $request, Area $area)
     {
@@ -75,9 +78,10 @@ class AreaGoalController extends Controller
     {
         $area = $this->ownedArea($request->user(), $area);
         $this->ensureAreaIsMutable($area);
-        $area->goals()->whereKey($goal->getKey())->firstOrFail()->delete();
+        $goal = $area->goals()->whereKey($goal->getKey())->firstOrFail();
+        $this->trashService->delete($request->user(), $goal, 'goal', $goal->title, $area->name);
 
-        return $this->success(null, 'Successfully deleted goal.');
+        return $this->success(null, 'Goal moved to Trash. It will be permanently deleted after 30 days.');
     }
 
     private function goalData(array $data, ?Goal $goal = null): array

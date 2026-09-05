@@ -8,11 +8,12 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 #[Fillable(['name', 'color'])]
 class BoardLabel extends Model
 {
-    use HasUuid;
+    use HasUuid, SoftDeletes;
 
     protected function casts(): array
     {
