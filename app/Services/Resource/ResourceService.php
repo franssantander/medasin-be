@@ -127,6 +127,80 @@ class ResourceService
         }
     }
 
+    public function update(User $user, Resource $resource, array $data): array
+    {
+        return DB::transaction(function () use ($user, $resource, $data) {
+            $content = $data['content'] ?? null;
+            $resource->update([
+                'title' => $data['title'],
+                'icon' => $data['icon'] ?? null,
+                'background' => $data['background'] ?? null,
+                'content' => $content,
+                'content_text' => $content === null ? null : $this->extractText($content),
+            ]);
+
+            $tagIds = ResourceTag::query()->where('user_id', $user->id)->whereIn('uuid', $data['tag_uuids'] ?? [])->pluck('id')->all();
+            foreach ($data['tag_names'] ?? [] as $name) {
+                $name = trim($name);
+                $tagIds[] = ResourceTag::firstOrCreate([
+                    'user_id' => $user->id,
+                    'normalized_name' => mb_strtolower($name),
+                ], ['name' => $name])->id;
+            }
+            $resource->tags()->sync(array_unique($tagIds));
+
+            $projectIds = empty($data['project_uuid']) ? [] : [$user->projects()->where('uuid', $data['project_uuid'])->firstOrFail()->id];
+            $areaIds = empty($data['area_uuid']) ? [] : [$user->areas()->where('uuid', $data['area_uuid'])->firstOrFail()->id];
+            $resource->projects()->sync($projectIds);
+            $resource->areas()->sync($areaIds);
+
+            return $this->serialize($resource->fresh(['attachments', 'tags', 'projects', 'areas']));
+        });
+    }
+
+    public function addAttachments(Resource $resource, array $links, array $files): array
+    {
+        $paths = [];
+        try {
+            DB::transaction(function () use ($resource, $links, $files, &$paths) {
+                foreach ($links as $url) {
+                    $resource->attachments()->create(['kind' => 'link', 'url' => $url]);
+                }
+                foreach ($files as $file) {
+                    $path = $file->store("resources/{$resource->uuid}", 'local');
+                    if ($path === false) {
+                        throw new RuntimeException('Unable to store resource attachment.');
+                    }
+                    $paths[] = $path;
+                    $mime = $file->getMimeType() ?: 'application/octet-stream';
+                    $resource->attachments()->create([
+                        'kind' => in_array($mime, ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], true) ? 'image' : 'file',
+                        'path' => $path,
+                        'original_name' => mb_substr(basename($file->getClientOriginalName()), 0, 255),
+                        'mime_type' => $mime,
+                        'size' => $file->getSize(),
+                    ]);
+                }
+            });
+        } catch (Throwable $exception) {
+            Storage::disk('local')->delete($paths);
+            throw $exception;
+        }
+
+        return $this->serialize($resource->fresh(['attachments', 'tags', 'projects', 'areas']));
+    }
+
+    public function deleteAttachment(Resource $resource, string $uuid): array
+    {
+        $attachment = $resource->attachments()->where('uuid', $uuid)->firstOrFail();
+        if ($attachment->path) {
+            Storage::disk('local')->delete($attachment->path);
+        }
+        $attachment->delete();
+
+        return $this->serialize($resource->fresh(['attachments', 'tags', 'projects', 'areas']));
+    }
+
     public function serialize(Resource $resource): array
     {
         $types = $resource->attachments->pluck('kind');

@@ -6,7 +6,9 @@ use App\Data\Resource\ListResourceData;
 use App\Data\Resource\StoreResourceData;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Resource\ListResourceRequest;
+use App\Http\Requests\Resource\StoreResourceAttachmentRequest;
 use App\Http\Requests\Resource\StoreResourceRequest;
+use App\Http\Requests\Resource\UpdateResourceRequest;
 use App\Models\Resource;
 use App\Services\Resource\ResourceService;
 use Illuminate\Http\JsonResponse;
@@ -25,6 +27,27 @@ class ResourceController extends Controller
     public function store(StoreResourceRequest $request): JsonResponse
     {
         return $this->success($this->service->create($request->user(), StoreResourceData::from($request->validated())), 'Successfully created resource.', 201);
+    }
+
+    public function update(UpdateResourceRequest $request, Resource $resource): JsonResponse
+    {
+        $resource = $request->user()->resources()->whereKey($resource->getKey())->whereNull('archived_at')->firstOrFail();
+
+        return $this->success($this->service->update($request->user(), $resource, $request->validated()), 'Successfully updated resource.');
+    }
+
+    public function storeAttachment(StoreResourceAttachmentRequest $request, Resource $resource): JsonResponse
+    {
+        $resource = $request->user()->resources()->whereKey($resource->getKey())->whereNull('archived_at')->firstOrFail();
+
+        return $this->success($this->service->addAttachments($resource, $request->validated('links', []), $request->validated('files', [])), 'Successfully added attachment.');
+    }
+
+    public function destroyAttachment(Request $request, Resource $resource, string $attachment): JsonResponse
+    {
+        $resource = $request->user()->resources()->whereKey($resource->getKey())->whereNull('archived_at')->firstOrFail();
+
+        return $this->success($this->service->deleteAttachment($resource, $attachment), 'Successfully removed attachment.');
     }
 
     public function tags(Request $request): JsonResponse
