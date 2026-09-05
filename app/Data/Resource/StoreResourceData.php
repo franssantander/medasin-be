@@ -8,6 +8,8 @@ class StoreResourceData extends Data
 {
     public function __construct(
         public string $title,
+        public ?string $icon = null,
+        public ?string $background = null,
         public ?array $content = null,
         public array $links = [],
         public array $files = [],

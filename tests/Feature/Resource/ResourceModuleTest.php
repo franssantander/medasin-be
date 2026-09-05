@@ -26,6 +26,8 @@ class ResourceModuleTest extends TestCase
 
         $response = $this->actingAs($user, 'api')->post(route('resource.store'), [
             'title' => 'Reference',
+            'icon' => 'LibraryBig',
+            'background' => '#3B82F6',
             'content' => json_encode($content),
             'links' => ['https://example.com/guide'],
             'files' => [UploadedFile::fake()->createWithContent('guide.txt', 'Reference file'), UploadedFile::fake()->createWithContent('photo.png', base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII='))],
@@ -35,6 +37,8 @@ class ResourceModuleTest extends TestCase
             'area_uuid' => $area->uuid,
         ], ['Accept' => 'application/json'])->assertCreated()
             ->assertJsonPath('data.content', $content)
+            ->assertJsonPath('data.icon', 'LibraryBig')
+            ->assertJsonPath('data.background', '#3B82F6')
             ->assertJsonPath('data.types', ['file', 'image', 'link', 'note'])
             ->assertJsonCount(2, 'data.tags')
             ->assertJsonPath('data.projects.0.name', 'Launch')
@@ -42,6 +46,8 @@ class ResourceModuleTest extends TestCase
 
         $resource = Resource::where('uuid', $response->json('data.uuid'))->firstOrFail();
         $this->assertSame($user->id, $resource->user_id);
+        $this->assertSame('LibraryBig', $resource->icon);
+        $this->assertSame('#3B82F6', $resource->background);
         $this->assertSame('Useful knowledge', $resource->content_text);
         $this->assertCount(2, Storage::disk('local')->allFiles());
         $this->assertDatabaseCount('resource_tags', 2);
@@ -132,8 +138,9 @@ class ResourceModuleTest extends TestCase
         $tag = ResourceTag::create(['user_id' => $other->id, 'name' => 'Private', 'normalized_name' => 'private']);
         $this->actingAs($user, 'api')->postJson(route('resource.store'), [
             'title' => '', 'content' => 'invalid json', 'links' => ['javascript:alert(1)'],
+            'icon' => str_repeat('a', 51), 'background' => 'blue',
             'area_uuid' => $area->uuid, 'project_uuid' => $project->uuid, 'tag_uuids' => [$tag->uuid],
-        ])->assertUnprocessable()->assertJsonValidationErrors(['title', 'content', 'links.0', 'area_uuid', 'project_uuid', 'tag_uuids.0']);
+        ])->assertUnprocessable()->assertJsonValidationErrors(['title', 'icon', 'background', 'content', 'links.0', 'area_uuid', 'project_uuid', 'tag_uuids.0']);
         $area->forceFill(['user_id' => $user->id, 'archived_at' => now()])->save();
         $project->forceFill(['user_id' => $user->id, 'archived_at' => now()])->save();
         $this->postJson(route('resource.store'), ['title' => 'Test', 'area_uuid' => $area->uuid, 'project_uuid' => $project->uuid])

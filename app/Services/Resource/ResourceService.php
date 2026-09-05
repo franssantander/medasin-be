@@ -76,6 +76,8 @@ class ResourceService
             return DB::transaction(function () use ($user, $data, &$paths) {
                 $resource = $user->resources()->create([
                     'title' => $data->title,
+                    'icon' => $data->icon,
+                    'background' => $data->background,
                     'content' => $data->content,
                     'content_text' => $data->content === null ? null : $this->extractText($data->content),
                 ]);

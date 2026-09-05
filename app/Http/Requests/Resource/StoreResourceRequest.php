@@ -28,6 +28,8 @@ class StoreResourceRequest extends FormRequest
 
         return [
             'title' => ['required', 'string', 'max:255'],
+            'icon' => ['nullable', 'string', 'max:50'],
+            'background' => ['nullable', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
             'content' => ['nullable', 'array'],
             'content.type' => ['required_with:content', 'in:doc'],
             'content.content' => ['sometimes', 'array'],
