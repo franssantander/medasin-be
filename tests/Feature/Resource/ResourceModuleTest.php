@@ -19,8 +19,14 @@ class ResourceModuleTest extends TestCase
     {
         Storage::fake('local');
         $user = User::factory()->create();
-        $area = $user->areas()->create(['name' => 'Work']);
-        $project = $user->projects()->create(['name' => 'Launch']);
+        $areas = collect([
+            $user->areas()->create(['name' => 'Work']),
+            $user->areas()->create(['name' => 'Research']),
+        ]);
+        $projects = collect([
+            $user->projects()->create(['name' => 'Launch']),
+            $user->projects()->create(['name' => 'Website']),
+        ]);
         $existing = ResourceTag::create(['user_id' => $user->id, 'name' => 'Work', 'normalized_name' => 'work']);
         $content = ['type' => 'doc', 'content' => [['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Useful knowledge']]]]];
 
@@ -33,16 +39,16 @@ class ResourceModuleTest extends TestCase
             'files' => [UploadedFile::fake()->createWithContent('guide.txt', 'Reference file'), UploadedFile::fake()->createWithContent('photo.png', base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII='))],
             'tag_uuids' => [$existing->uuid],
             'tag_names' => [' WORK ', 'Research'],
-            'project_uuid' => $project->uuid,
-            'area_uuid' => $area->uuid,
+            'project_uuids' => $projects->pluck('uuid')->all(),
+            'area_uuids' => $areas->pluck('uuid')->all(),
         ], ['Accept' => 'application/json'])->assertCreated()
             ->assertJsonPath('data.content', $content)
             ->assertJsonPath('data.icon', 'LibraryBig')
             ->assertJsonPath('data.background', '#3B82F6')
             ->assertJsonPath('data.types', ['file', 'image', 'link', 'note'])
             ->assertJsonCount(2, 'data.tags')
-            ->assertJsonPath('data.projects.0.name', 'Launch')
-            ->assertJsonPath('data.areas.0.name', 'Work');
+            ->assertJsonCount(2, 'data.projects')
+            ->assertJsonCount(2, 'data.areas');
 
         $resource = Resource::where('uuid', $response->json('data.uuid'))->firstOrFail();
         $this->assertSame($user->id, $resource->user_id);
@@ -61,6 +67,75 @@ class ResourceModuleTest extends TestCase
         $this->getJson(route('resource.tags'))->assertUnauthorized();
         $this->actingAs(User::factory()->create(), 'api')->postJson(route('resource.store'), ['title' => 'Reference'])
             ->assertCreated()->assertJsonPath('data.types', []);
+    }
+
+    public function test_update_replaces_and_clears_project_and_area_assignments(): void
+    {
+        $user = User::factory()->create();
+        $resource = $user->resources()->create(['title' => 'Reference']);
+        $oldProject = $user->projects()->create(['name' => 'Old project']);
+        $newProjects = collect([
+            $user->projects()->create(['name' => 'New project']),
+            $user->projects()->create(['name' => 'Another project']),
+        ]);
+        $oldArea = $user->areas()->create(['name' => 'Old area']);
+        $newAreas = collect([
+            $user->areas()->create(['name' => 'New area']),
+            $user->areas()->create(['name' => 'Another area']),
+        ]);
+        $resource->projects()->attach($oldProject);
+        $resource->areas()->attach($oldArea);
+
+        $this->actingAs($user, 'api')
+            ->patchJson(route('resource.update', $resource->uuid), [
+                'title' => 'Reference',
+                'project_uuids' => $newProjects->pluck('uuid')->all(),
+                'area_uuids' => $newAreas->pluck('uuid')->all(),
+            ])
+            ->assertOk()
+            ->assertJsonCount(2, 'data.projects')
+            ->assertJsonCount(2, 'data.areas');
+
+        $this->assertEqualsCanonicalizing($newProjects->pluck('id')->all(), $resource->projects()->pluck('projects.id')->all());
+        $this->assertEqualsCanonicalizing($newAreas->pluck('id')->all(), $resource->areas()->pluck('areas.id')->all());
+
+        $this->patchJson(route('resource.update', $resource->uuid), [
+            'title' => 'Reference',
+            'project_uuids' => [],
+            'area_uuids' => [],
+        ])->assertOk()->assertJsonCount(0, 'data.projects')->assertJsonCount(0, 'data.areas');
+    }
+
+    public function test_owner_can_show_an_active_or_archived_resource(): void
+    {
+        $user = User::factory()->create();
+        $active = $user->resources()->create(['title' => 'Active reference']);
+        $archived = $user->resources()->create([
+            'title' => 'Archived reference',
+            'archived_at' => now(),
+        ]);
+
+        $this->actingAs($user, 'api')
+            ->getJson(route('resource.show', $active->uuid))
+            ->assertOk()
+            ->assertJsonPath('data.uuid', $active->uuid)
+            ->assertJsonPath('data.title', 'Active reference');
+
+        $this->getJson(route('resource.show', $archived->uuid))
+            ->assertOk()
+            ->assertJsonPath('data.uuid', $archived->uuid)
+            ->assertJsonPath('data.archived_at', $archived->archived_at->toJSON());
+    }
+
+    public function test_resource_show_requires_authentication_and_ownership(): void
+    {
+        $owner = User::factory()->create();
+        $resource = $owner->resources()->create(['title' => 'Private']);
+
+        $this->getJson(route('resource.show', $resource->uuid))->assertUnauthorized();
+        $this->actingAs(User::factory()->create(), 'api')
+            ->getJson(route('resource.show', $resource->uuid))
+            ->assertNotFound();
     }
 
     public function test_owner_can_archive_a_resource_idempotently(): void
@@ -139,12 +214,12 @@ class ResourceModuleTest extends TestCase
         $this->actingAs($user, 'api')->postJson(route('resource.store'), [
             'title' => '', 'content' => 'invalid json', 'links' => ['javascript:alert(1)'],
             'icon' => str_repeat('a', 51), 'background' => 'blue',
-            'area_uuid' => $area->uuid, 'project_uuid' => $project->uuid, 'tag_uuids' => [$tag->uuid],
-        ])->assertUnprocessable()->assertJsonValidationErrors(['title', 'icon', 'background', 'content', 'links.0', 'area_uuid', 'project_uuid', 'tag_uuids.0']);
+            'area_uuids' => [$area->uuid], 'project_uuids' => [$project->uuid], 'tag_uuids' => [$tag->uuid],
+        ])->assertUnprocessable()->assertJsonValidationErrors(['title', 'icon', 'background', 'content', 'links.0', 'area_uuids.0', 'project_uuids.0', 'tag_uuids.0']);
         $area->forceFill(['user_id' => $user->id, 'archived_at' => now()])->save();
         $project->forceFill(['user_id' => $user->id, 'archived_at' => now()])->save();
-        $this->postJson(route('resource.store'), ['title' => 'Test', 'area_uuid' => $area->uuid, 'project_uuid' => $project->uuid])
-            ->assertUnprocessable()->assertJsonValidationErrors(['area_uuid', 'project_uuid']);
+        $this->postJson(route('resource.store'), ['title' => 'Test', 'area_uuids' => [$area->uuid], 'project_uuids' => [$project->uuid]])
+            ->assertUnprocessable()->assertJsonValidationErrors(['area_uuids.0', 'project_uuids.0']);
         $this->assertDatabaseCount('resources', 0);
         $this->getJson(route('resource.tags'))->assertOk()->assertJsonCount(0, 'data');
         $this->getJson(route('resource.index', ['tag_uuid' => $tag->uuid]))->assertUnprocessable()->assertJsonValidationErrors('tag_uuid');

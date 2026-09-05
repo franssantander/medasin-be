@@ -112,12 +112,10 @@ class ResourceService
                 }
                 $resource->tags()->sync(array_unique($tagIds));
 
-                if ($data->project_uuid) {
-                    $resource->projects()->attach($user->projects()->where('uuid', $data->project_uuid)->firstOrFail()->id);
-                }
-                if ($data->area_uuid) {
-                    $resource->areas()->attach($user->areas()->where('uuid', $data->area_uuid)->firstOrFail()->id);
-                }
+                $projectIds = $user->projects()->whereIn('uuid', $data->project_uuids)->pluck('id')->all();
+                $areaIds = $user->areas()->whereIn('uuid', $data->area_uuids)->pluck('id')->all();
+                $resource->projects()->sync($projectIds);
+                $resource->areas()->sync($areaIds);
 
                 return $this->serialize($resource->fresh(['attachments', 'tags', 'projects', 'areas']));
             });
@@ -149,8 +147,8 @@ class ResourceService
             }
             $resource->tags()->sync(array_unique($tagIds));
 
-            $projectIds = empty($data['project_uuid']) ? [] : [$user->projects()->where('uuid', $data['project_uuid'])->firstOrFail()->id];
-            $areaIds = empty($data['area_uuid']) ? [] : [$user->areas()->where('uuid', $data['area_uuid'])->firstOrFail()->id];
+            $projectIds = $user->projects()->whereIn('uuid', $data['project_uuids'] ?? [])->pluck('id')->all();
+            $areaIds = $user->areas()->whereIn('uuid', $data['area_uuids'] ?? [])->pluck('id')->all();
             $resource->projects()->sync($projectIds);
             $resource->areas()->sync($areaIds);
 

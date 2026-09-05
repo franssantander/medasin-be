@@ -29,6 +29,15 @@ class ResourceController extends Controller
         return $this->success($this->service->create($request->user(), StoreResourceData::from($request->validated())), 'Successfully created resource.', 201);
     }
 
+    public function show(Request $request, Resource $resource): JsonResponse
+    {
+        $resource = $request->user()->resources()->whereKey($resource->getKey())->firstOrFail();
+
+        return $this->success(
+            $this->service->serialize($resource->load(['attachments', 'tags', 'projects', 'areas'])),
+        );
+    }
+
     public function update(UpdateResourceRequest $request, Resource $resource): JsonResponse
     {
         $resource = $request->user()->resources()->whereKey($resource->getKey())->whereNull('archived_at')->firstOrFail();

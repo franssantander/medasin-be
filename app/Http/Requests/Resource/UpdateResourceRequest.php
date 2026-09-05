@@ -27,8 +27,10 @@ class UpdateResourceRequest extends FormRequest
             'tag_uuids.*' => ['required', 'uuid', 'distinct', $owned('resource_tags')],
             'tag_names' => ['sometimes', 'array', 'max:100'],
             'tag_names.*' => ['required', 'string', 'max:100'],
-            'project_uuid' => ['nullable', 'uuid', $owned('projects')->whereNull('deleted_at')->whereNull('archived_at')],
-            'area_uuid' => ['nullable', 'uuid', $owned('areas')->whereNull('deleted_at')->whereNull('archived_at')],
+            'project_uuids' => ['sometimes', 'array', 'max:100'],
+            'project_uuids.*' => ['required', 'uuid', 'distinct', $owned('projects')->whereNull('deleted_at')->whereNull('archived_at')],
+            'area_uuids' => ['sometimes', 'array', 'max:100'],
+            'area_uuids.*' => ['required', 'uuid', 'distinct', $owned('areas')->whereNull('deleted_at')->whereNull('archived_at')],
         ];
     }
 }

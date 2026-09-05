@@ -153,6 +153,41 @@ class ProjectKanbanBoardTest extends TestCase
         $this->getJson(route('project.boards.show', [$project, $board]))->assertOk();
     }
 
+    public function test_project_detail_includes_direct_and_task_resources_once(): void
+    {
+        [$user, $project, $board] = $this->projectWithBoard();
+        $direct = $user->resources()->create(['title' => 'Direct resource']);
+        $taskOnly = $user->resources()->create(['title' => 'Task resource']);
+        $shared = $user->resources()->create(['title' => 'Shared resource']);
+        $archived = $user->resources()->create(['title' => 'Archived resource']);
+        $project->resources()->attach([$direct->id, $shared->id, $archived->id]);
+
+        $taskUuid = $this->postJson(route('project.boards.tasks.store', [$project, $board]), [
+            'title' => 'Collect references',
+            'resource_uuids' => [$taskOnly->uuid, $shared->uuid, $archived->uuid],
+        ])->assertCreated()->json('data.uuid');
+        $archived->forceFill(['archived_at' => now()])->save();
+
+        $this->getJson(route('project.show', $project))
+            ->assertOk()
+            ->assertJsonCount(3, 'data.resources')
+            ->assertJsonFragment(['uuid' => $direct->uuid, 'title' => 'Direct resource'])
+            ->assertJsonFragment(['uuid' => $taskOnly->uuid, 'title' => 'Task resource'])
+            ->assertJsonFragment(['uuid' => $shared->uuid, 'title' => 'Shared resource'])
+            ->assertJsonMissing(['uuid' => $archived->uuid]);
+
+        $task = $board->tasks()->where('uuid', $taskUuid)->firstOrFail();
+        $this->putJson(route('project.boards.tasks.update', [$project, $board, $task]), [
+            'title' => $task->title,
+            'resource_uuids' => [$shared->uuid],
+        ])->assertOk();
+
+        $this->getJson(route('project.show', $project))
+            ->assertOk()
+            ->assertJsonCount(2, 'data.resources')
+            ->assertJsonMissing(['uuid' => $taskOnly->uuid]);
+    }
+
     /**
      * @return array{User, Project, Board}
      */

@@ -13,13 +13,17 @@ use App\Http\Resources\Project\ProjectDetailResource;
 use App\Http\Resources\Project\ProjectListCardResource;
 use App\Models\Project;
 use App\Services\Project\ProjectService;
+use App\Services\Resource\ResourceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 class ProjectController extends Controller
 {
-    public function __construct(protected ProjectService $projectService) {}
+    public function __construct(
+        protected ProjectService $projectService,
+        protected ResourceService $resourceService,
+    ) {}
 
     /**
      * Display a listing of the resource.
@@ -81,7 +85,25 @@ class ProjectController extends Controller
             ])
             ->firstOrFail();
 
-        return $this->success(ProjectDetailResource::make($data)->resolve($request));
+        $resources = $request->user()->resources()
+            ->whereNull('archived_at')
+            ->where(function ($query) use ($data): void {
+                $query
+                    ->whereHas('projects', fn ($projects) => $projects->whereKey($data->getKey()))
+                    ->orWhereHas('boardTasks.board', fn ($boards) => $boards
+                        ->where('context_type', $data->getMorphClass())
+                        ->where('context_id', $data->getKey()));
+            })
+            ->with(['attachments', 'tags', 'projects', 'areas'])
+            ->latest('resources.created_at')
+            ->get()
+            ->map(fn ($resource) => $this->resourceService->serialize($resource))
+            ->values()
+            ->all();
+        $payload = ProjectDetailResource::make($data)->resolve($request);
+        $payload['resources'] = $resources;
+
+        return $this->success($payload);
     }
 
     /**
