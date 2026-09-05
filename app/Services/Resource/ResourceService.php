@@ -156,6 +156,21 @@ class ResourceService
         });
     }
 
+    public function archive(Resource $resource): array
+    {
+        return DB::transaction(function () use ($resource) {
+            $resource->areas()->detach();
+            $resource->projects()->detach();
+            $resource->boardTasks()->detach();
+
+            if ($resource->archived_at === null) {
+                $resource->forceFill(['archived_at' => now()])->save();
+            }
+
+            return $this->serialize($resource->fresh(['attachments', 'tags', 'projects', 'areas']));
+        });
+    }
+
     public function addAttachments(Resource $resource, array $links, array $files): array
     {
         $paths = [];

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Resource;
 
+use App\Models\Project;
 use App\Models\Resource;
 use App\Models\ResourceAttachment;
 use App\Models\ResourceTag;
@@ -138,23 +139,46 @@ class ResourceModuleTest extends TestCase
             ->assertNotFound();
     }
 
-    public function test_owner_can_archive_a_resource_idempotently(): void
+    public function test_owner_can_archive_a_resource_idempotently_and_remove_all_links(): void
     {
         $user = User::factory()->create();
         $resource = $user->resources()->create(['title' => 'Reference']);
+        $area = $user->areas()->create(['name' => 'Work']);
+        $this->actingAs($user, 'api');
+        $projectUuid = $this->postJson(route('project.store'), ['name' => 'Launch'])
+            ->assertCreated()
+            ->json('data.uuid');
+        $project = Project::where('uuid', $projectUuid)->firstOrFail();
+        $board = $project->boards()->firstOrFail();
+        $taskUuid = $this->postJson(route('project.boards.tasks.store', [$project, $board]), [
+            'title' => 'Review reference',
+            'resource_uuids' => [$resource->uuid],
+        ])->assertCreated()->json('data.uuid');
+        $task = $board->tasks()->where('uuid', $taskUuid)->firstOrFail();
+        $area->resources()->attach($resource);
+        $project->resources()->attach($resource);
 
-        $this->actingAs($user, 'api')
-            ->postJson(route('resource.archive', $resource->uuid))
+        $this->postJson(route('resource.archive', $resource->uuid))
             ->assertOk()
             ->assertJsonPath('message', 'Successfully archived resource.')
-            ->assertJsonPath('data.uuid', $resource->uuid);
+            ->assertJsonPath('data.uuid', $resource->uuid)
+            ->assertJsonCount(0, 'data.areas')
+            ->assertJsonCount(0, 'data.projects');
 
         $archivedAt = $resource->fresh()->archived_at;
         $this->assertNotNull($archivedAt);
+        $this->assertFalse($area->resources()->whereKey($resource->getKey())->exists());
+        $this->assertFalse($project->resources()->whereKey($resource->getKey())->exists());
+        $this->assertFalse($task->resources()->whereKey($resource->getKey())->exists());
 
         $this->postJson(route('resource.archive', $resource->uuid))->assertOk();
         $this->assertTrue($archivedAt->equalTo($resource->fresh()->archived_at));
         $this->getJson(route('resource.index'))->assertJsonPath('data.total', 0);
+
+        $this->postJson(route('resource.restore', $resource->uuid))->assertOk();
+        $this->assertFalse($area->resources()->whereKey($resource->getKey())->exists());
+        $this->assertFalse($project->resources()->whereKey($resource->getKey())->exists());
+        $this->assertFalse($task->resources()->whereKey($resource->getKey())->exists());
     }
 
     public function test_resource_archive_requires_authentication_and_ownership(): void
