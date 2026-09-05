@@ -13,11 +13,13 @@ use App\Http\Requests\Project\UpdateProjectRequest;
 use App\Http\Resources\Project\ProjectDetailResource;
 use App\Http\Resources\Project\ProjectListCardResource;
 use App\Models\Project;
+use App\Models\Resource;
 use App\Services\Project\ProjectService;
 use App\Services\Resource\ResourceService;
 use App\Services\Trash\TrashService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class ProjectController extends Controller
@@ -201,6 +203,26 @@ class ProjectController extends Controller
         $project->resources()->syncWithoutDetaching($resourceIds);
 
         return $this->success(null, 'Successfully linked resources to project.');
+    }
+
+    public function detachResource(Request $request, Project $project, Resource $resource): JsonResponse
+    {
+        $project = $this->ownedProject($request->user(), $project);
+        $this->ensureProjectIsMutable($project);
+        $resource = $request->user()->resources()->whereKey($resource->getKey())->firstOrFail();
+        $isDirectlyLinked = $project->resources()->whereKey($resource->getKey())->exists();
+        $linkedTaskIds = $project->boardTasks()
+            ->whereHas('resources', fn ($resources) => $resources->whereKey($resource->getKey()))
+            ->pluck('board_tasks.id');
+
+        abort_if(! $isDirectlyLinked && $linkedTaskIds->isEmpty(), 404);
+
+        DB::transaction(function () use ($project, $resource, $linkedTaskIds): void {
+            $project->resources()->detach($resource->getKey());
+            $resource->boardTasks()->detach($linkedTaskIds);
+        });
+
+        return $this->success(null, 'Successfully removed resource from project.');
     }
 
     private function withKanbanCounts($query)

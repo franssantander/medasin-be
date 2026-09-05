@@ -17,6 +17,7 @@ Route::prefix('project')
         Route::put('/{project}', 'update')->name('update');
         Route::patch('/{project}/area', 'updateArea')->name('area.update');
         Route::post('/{project}/resources', 'attachResources')->name('resources.store');
+        Route::delete('/{project}/resources/{resource}', 'detachResource')->name('resources.destroy');
         Route::delete('/{project}', 'destroy')->name('destroy');
         Route::post('/{project}/archive', 'archive')->name('archive');
         Route::post('/{project}/restore', 'restore')->name('restore');

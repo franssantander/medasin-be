@@ -221,6 +221,42 @@ class ProjectKanbanBoardTest extends TestCase
         ])->assertConflict();
     }
 
+    public function test_resource_can_be_removed_from_an_active_project_and_its_tasks(): void
+    {
+        [$user, $project, $board] = $this->projectWithBoard();
+        $resource = $user->resources()->create(['title' => 'Linked resource']);
+        $project->resources()->attach($resource);
+        $taskUuid = $this->postJson(route('project.boards.tasks.store', [$project, $board]), [
+            'title' => 'Task with resource',
+            'resource_uuids' => [$resource->uuid],
+        ])->assertCreated()->json('data.uuid');
+
+        $this->deleteJson(route('project.resources.destroy', [$project, $resource]))
+            ->assertOk()
+            ->assertJsonPath('message', 'Successfully removed resource from project.');
+
+        $this->assertFalse($project->resources()->whereKey($resource->getKey())->exists());
+        $task = $board->tasks()->where('uuid', $taskUuid)->firstOrFail();
+        $this->assertFalse($task->resources()->whereKey($resource->getKey())->exists());
+        $this->assertDatabaseHas('resources', ['id' => $resource->getKey()]);
+    }
+
+    public function test_resource_removal_requires_owned_active_project_and_linked_resource(): void
+    {
+        [$user, $project] = $this->projectWithBoard();
+        $linked = $user->resources()->create(['title' => 'Linked resource']);
+        $unlinked = $user->resources()->create(['title' => 'Unlinked resource']);
+        $foreign = User::factory()->create()->resources()->create(['title' => 'Private resource']);
+        $project->resources()->attach($linked);
+
+        $this->deleteJson(route('project.resources.destroy', [$project, $unlinked]))->assertNotFound();
+        $this->deleteJson(route('project.resources.destroy', [$project, $foreign]))->assertNotFound();
+
+        $this->postJson(route('project.archive', $project))->assertOk();
+        $this->deleteJson(route('project.resources.destroy', [$project, $linked]))->assertConflict();
+        $this->assertTrue($project->resources()->whereKey($linked->getKey())->exists());
+    }
+
     /**
      * @return array{User, Project, Board}
      */
