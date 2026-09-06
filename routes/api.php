@@ -4,5 +4,6 @@ require __DIR__.'/v1/auth.php';
 require __DIR__.'/v1/plan.php';
 require __DIR__.'/v1/area.php';
 require __DIR__.'/v1/project.php';
+require __DIR__.'/v1/board.php';
 require __DIR__.'/v1/resource.php';
 require __DIR__.'/v1/trash.php';

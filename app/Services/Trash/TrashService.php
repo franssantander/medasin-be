@@ -53,6 +53,25 @@ class TrashService
         });
     }
 
+    public function deleteStandaloneBoard(User $user, Board $board): TrashEntry
+    {
+        if ($user->boards()->whereNull('context_type')->whereNull('context_id')->count() <= 1) {
+            throw new ConflictHttpException('A standalone board must keep at least one board.');
+        }
+
+        return DB::transaction(function () use ($user, $board): TrashEntry {
+            $taskIds = $board->tasks()->pluck('id')->all();
+            $deletedAt = now();
+            $board->tasks()->delete();
+            $board->delete();
+            $user->boards()->whereNull('context_type')->whereNull('context_id')->orderBy('position')->get()->each(
+                fn (Board $item, int $position) => $item->update(['position' => $position]),
+            );
+
+            return $this->createEntry($user, $board, 'board', $board->name, 'Board', ['task_ids' => $taskIds], $deletedAt);
+        });
+    }
+
     public function deleteNoteTree(User $user, Area $area, Note $note): TrashEntry
     {
         return DB::transaction(function () use ($user, $area, $note): TrashEntry {
@@ -81,8 +100,11 @@ class TrashService
                 $subject->restore();
                 BoardTask::onlyTrashed()->whereIn('id', $entry->metadata['task_ids'] ?? [])->restore();
                 $this->resequenceBoardTasks($subject);
-                $project = Project::query()->findOrFail($subject->context_id);
-                $this->resequenceBoards($project);
+                if ($subject->context_type === 'project' && $subject->context_id) {
+                    $this->resequenceBoards(Project::query()->findOrFail($subject->context_id));
+                } else {
+                    $this->resequenceStandaloneBoards($subject->user()->firstOrFail());
+                }
             } elseif ($subject instanceof Note) {
                 Note::onlyTrashed()->whereIn('id', $entry->metadata['note_ids'] ?? [$subject->getKey()])->restore();
             } else {
@@ -183,7 +205,7 @@ class TrashService
     {
         $missing = match (true) {
             $subject instanceof Project => $subject->area_id && Area::withTrashed()->find($subject->area_id)?->trashed() !== false,
-            $subject instanceof Board => Project::withTrashed()->find($subject->context_id)?->trashed() !== false,
+            $subject instanceof Board => $subject->context_type === 'project' && Project::withTrashed()->find($subject->context_id)?->trashed() !== false,
             $subject instanceof BoardTask => $this->boardUnavailable($subject->board_id),
             $subject instanceof Goal, $subject instanceof Habit, $subject instanceof Note => Area::withTrashed()->find($subject->area_id)?->trashed() !== false,
             $subject instanceof BoardLabel => $this->boardUnavailable($subject->board_id),
@@ -206,7 +228,7 @@ class TrashService
     {
         $board = Board::withTrashed()->find($boardId);
 
-        return ! $board || $board->trashed() || Project::withTrashed()->find($board->context_id)?->trashed() !== false;
+        return ! $board || $board->trashed() || ($board->context_type === 'project' && Project::withTrashed()->find($board->context_id)?->trashed() !== false);
     }
 
     private function resequenceBoardTasks(Board $board): void
@@ -219,6 +241,13 @@ class TrashService
     private function resequenceBoards(Project $project): void
     {
         $project->boards()->orderBy('position')->orderBy('id')->get()->each(
+            fn (Board $board, int $position) => $board->forceFill(['position' => $position])->save(),
+        );
+    }
+
+    private function resequenceStandaloneBoards(User $user): void
+    {
+        $user->boards()->whereNull('context_type')->whereNull('context_id')->orderBy('position')->orderBy('id')->get()->each(
             fn (Board $board, int $position) => $board->forceFill(['position' => $position])->save(),
         );
     }

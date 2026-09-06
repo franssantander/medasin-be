@@ -29,10 +29,9 @@ class StoreBoardRequest extends FormRequest
                 'nullable',
                 'string',
                 'max:120',
-                Rule::unique('boards')->where(fn ($query) => $query
-                    ->where('context_type', 'project')
-                    ->where('context_id', $project?->getKey())
-                    ->whereNull('deleted_at')),
+                Rule::unique('boards')->where(fn ($query) => $project
+                    ? $query->where('context_type', 'project')->where('context_id', $project->getKey())->whereNull('deleted_at')
+                    : $query->whereNull('context_type')->whereNull('context_id')->where('user_id', $this->user()?->getKey())->whereNull('deleted_at')),
             ],
         ];
     }
