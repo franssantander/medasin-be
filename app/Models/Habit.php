@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-#[Fillable(['name', 'icon', 'description', 'frequency', 'schedule', 'is_active'])]
+#[Fillable(['area_id', 'name', 'icon', 'description', 'frequency', 'schedule', 'is_active'])]
 class Habit extends Model
 {
     use HasUuid, SoftDeletes;
@@ -33,6 +33,11 @@ class Habit extends Model
     public function area(): BelongsTo
     {
         return $this->belongsTo(Area::class);
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
     }
 
     public function checkIns(): HasMany

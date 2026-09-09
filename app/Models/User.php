@@ -38,6 +38,11 @@ class User extends Authenticatable
         return $this->hasMany(Area::class);
     }
 
+    public function habits(): HasMany
+    {
+        return $this->hasMany(Habit::class);
+    }
+
     public function projects(): HasMany
     {
         return $this->hasMany(Project::class);

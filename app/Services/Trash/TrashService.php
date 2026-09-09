@@ -207,7 +207,7 @@ class TrashService
             $subject instanceof Project => $subject->area_id && Area::withTrashed()->find($subject->area_id)?->trashed() !== false,
             $subject instanceof Board => $subject->context_type === 'project' && Project::withTrashed()->find($subject->context_id)?->trashed() !== false,
             $subject instanceof BoardTask => $this->boardUnavailable($subject->board_id),
-            $subject instanceof Goal, $subject instanceof Habit, $subject instanceof Note => Area::withTrashed()->find($subject->area_id)?->trashed() !== false,
+            $subject instanceof Goal, $subject instanceof Note => Area::withTrashed()->find($subject->area_id)?->trashed() !== false,
             $subject instanceof BoardLabel => $this->boardUnavailable($subject->board_id),
             $subject instanceof ResourceAttachment => Resource::withTrashed()->find($subject->resource_id)?->trashed() !== false,
             default => false,
@@ -261,7 +261,6 @@ class TrashService
         }
         $this->removeEntries(Note::class, $noteIds, $entry);
         $this->removeEntries(Goal::class, Goal::withTrashed()->where('area_id', $area->getKey())->pluck('id'), $entry);
-        $this->removeEntries(Habit::class, Habit::withTrashed()->where('area_id', $area->getKey())->pluck('id'), $entry);
         $area->forceDelete();
     }
 

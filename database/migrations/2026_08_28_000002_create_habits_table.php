@@ -12,7 +12,8 @@ return new class extends Migration
         Schema::create('habits', function (Blueprint $table) {
             $table->id();
             $table->uuid('uuid')->unique();
-            $table->foreignId('area_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('area_id')->nullable()->constrained()->nullOnDelete();
             $table->string('name', 120);
             $table->string('icon', 50)->default('Repeat2');
             $table->text('description')->nullable();
@@ -21,7 +22,7 @@ return new class extends Migration
             $table->boolean('is_active')->default(true);
             $table->softDeletes();
             $table->timestamps();
-            $table->index(['area_id', 'is_active']);
+            $table->index(['user_id', 'is_active']);
         });
     }
 

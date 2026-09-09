@@ -8,3 +8,4 @@ require __DIR__.'/v1/board.php';
 require __DIR__.'/v1/resource.php';
 require __DIR__.'/v1/trash.php';
 require __DIR__.'/v1/focus.php';
+require __DIR__.'/v1/habit.php';

@@ -16,6 +16,51 @@ class AreaModuleTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_a_habit_from_the_habits_module_can_be_linked_to_an_area(): void
+    {
+        $user = User::factory()->create();
+        $area = $user->areas()->create(['name' => 'Health']);
+        $habit = $user->habits()->create(['name' => 'Walk']);
+        Passport::actingAs($user);
+
+        $this->postJson(route('area.habits.link', $area), ['habit_uuid' => $habit->uuid])
+            ->assertOk()
+            ->assertJsonPath('data.uuid', $habit->uuid)
+            ->assertJsonPath('data.area.uuid', $area->uuid);
+
+        $this->assertSame($area->getKey(), $habit->fresh()->area_id);
+    }
+
+    public function test_linking_a_habit_moves_it_from_its_previous_area(): void
+    {
+        $user = User::factory()->create();
+        $oldArea = $user->areas()->create(['name' => 'Old area']);
+        $newArea = $user->areas()->create(['name' => 'New area']);
+        $habit = $user->habits()->create(['name' => 'Read', 'area_id' => $oldArea->getKey()]);
+        Passport::actingAs($user);
+
+        $this->postJson(route('area.habits.link', $newArea), ['habit_uuid' => $habit->uuid])
+            ->assertOk()
+            ->assertJsonPath('data.area.uuid', $newArea->uuid);
+
+        $this->assertSame($newArea->getKey(), $habit->fresh()->area_id);
+    }
+
+    public function test_a_user_cannot_link_another_users_habit(): void
+    {
+        $user = User::factory()->create();
+        $otherUser = User::factory()->create();
+        $area = $user->areas()->create(['name' => 'Health']);
+        $habit = $otherUser->habits()->create(['name' => 'Private']);
+        Passport::actingAs($user);
+
+        $this->postJson(route('area.habits.link', $area), ['habit_uuid' => $habit->uuid])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('habit_uuid');
+
+        $this->assertNull($habit->fresh()->area_id);
+    }
+
     public function test_area_background_images_can_be_uploaded_and_replaced(): void
     {
         Storage::fake('public');

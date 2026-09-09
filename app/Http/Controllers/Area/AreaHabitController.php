@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Area;
 use App\Data\Area\HabitData;
 use App\Http\Controllers\Area\Concerns\InteractsWithOwnedAreas;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Area\LinkHabitRequest;
 use App\Http\Requests\Area\StoreHabitRequest;
 use App\Http\Requests\Area\UpdateHabitRequest;
 use App\Models\Area;
 use App\Models\Habit;
+use App\Services\Habit\HabitService;
 use App\Services\Trash\TrashService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
@@ -18,7 +20,10 @@ class AreaHabitController extends Controller
 {
     use InteractsWithOwnedAreas;
 
-    public function __construct(private readonly TrashService $trashService) {}
+    public function __construct(
+        private readonly TrashService $trashService,
+        private readonly HabitService $habitService,
+    ) {}
 
     public function index(Request $request, Area $area)
     {
@@ -33,9 +38,22 @@ class AreaHabitController extends Controller
         $this->ensureAreaIsMutable($area);
         $data = HabitData::from($request->validated())->toArray();
         $this->validateSchedule($data);
-        $habit = $area->habits()->create($data);
+        $habit = $request->user()->habits()->create([
+            ...$data,
+            'area_id' => $area->getKey(),
+        ]);
 
         return $this->success($habit, 'Successfully created habit.', 201);
+    }
+
+    public function link(LinkHabitRequest $request, Area $area)
+    {
+        $area = $this->ownedArea($request->user(), $area);
+        $this->ensureAreaIsMutable($area);
+
+        $habit = $this->habitService->linkToArea($request->user(), $area, $request->validated('habit_uuid'));
+
+        return $this->success($habit, 'Successfully linked habit.');
     }
 
     public function show(Request $request, Area $area, Habit $habit)

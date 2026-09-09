@@ -27,6 +27,7 @@ Route::prefix('area/{area}')
     ->middleware('auth:api')
     ->group(function () {
         Route::apiResource('goals', AreaGoalController::class);
+        Route::post('habits/link', [AreaHabitController::class, 'link'])->name('habits.link');
         Route::apiResource('habits', AreaHabitController::class);
         Route::get('habits/{habit}/history', [AreaHabitController::class, 'history'])->name('habits.history');
         Route::put('habits/{habit}/check-ins/{date}', [AreaHabitController::class, 'checkIn'])->where('date', '\\d{4}-\\d{2}-\\d{2}')->name('habits.check-ins.update');

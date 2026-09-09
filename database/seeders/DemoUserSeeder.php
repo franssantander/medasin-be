@@ -90,7 +90,7 @@ class DemoUserSeeder extends Seeder
             ],
         ]);
 
-        $this->seedHabits($health, [
+        $this->seedHabits($user, $health, [
             [
                 'name' => 'Morning walk',
                 'icon' => 'Footprints',
@@ -109,7 +109,7 @@ class DemoUserSeeder extends Seeder
             ],
         ]);
 
-        $this->seedHabits($career, [
+        $this->seedHabits($user, $career, [
             [
                 'name' => 'Weekly review',
                 'icon' => 'ListChecks',
@@ -120,7 +120,7 @@ class DemoUserSeeder extends Seeder
             ],
         ]);
 
-        $this->seedHabits($personalDevelopment, [
+        $this->seedHabits($user, $personalDevelopment, [
             [
                 'name' => 'Read for thirty minutes',
                 'icon' => 'BookOpen',
@@ -350,12 +350,12 @@ class DemoUserSeeder extends Seeder
     /**
      * @param  list<array<string, mixed>>  $habits
      */
-    private function seedHabits(Area $area, array $habits): void
+    private function seedHabits(User $user, Area $area, array $habits): void
     {
         foreach ($habits as $habit) {
-            $area->habits()->updateOrCreate(
-                ['name' => $habit['name']],
-                $habit,
+            $user->habits()->updateOrCreate(
+                ['name' => $habit['name'], 'area_id' => $area->getKey()],
+                [...$habit, 'area_id' => $area->getKey()],
             );
         }
     }
