@@ -58,6 +58,16 @@ class User extends Authenticatable
         return $this->hasMany(Board::class);
     }
 
+    public function notes(): HasMany
+    {
+        return $this->hasMany(Note::class);
+    }
+
+    public function standaloneNotes(): HasMany
+    {
+        return $this->notes()->whereNull('area_id');
+    }
+
     public function trashEntries(): HasMany
     {
         return $this->hasMany(TrashEntry::class);

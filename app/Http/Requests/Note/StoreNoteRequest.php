@@ -1,10 +1,10 @@
 <?php
 
-namespace App\Http\Requests\Area;
+namespace App\Http\Requests\Note;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-class UpdateNoteRequest extends FormRequest
+class StoreNoteRequest extends FormRequest
 {
     public function authorize(): bool
     {
@@ -14,8 +14,8 @@ class UpdateNoteRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'title' => ['sometimes', 'required', 'string', 'max:120'],
-            'content' => ['sometimes', 'required', 'string'],
+            'title' => ['required', 'string', 'max:120'],
+            'content' => ['required', 'string'],
             'is_pinned' => ['sometimes', 'boolean'],
             'parent_uuid' => ['sometimes', 'nullable', 'uuid'],
         ];

@@ -7,6 +7,7 @@ use App\Models\Board;
 use App\Models\BoardStage;
 use App\Models\BoardTask;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -115,11 +116,10 @@ class BoardTaskService
         }
 
         if (array_key_exists('note_uuids', $data)) {
-            $ids = DB::table('notes')
-                ->join('areas', 'areas.id', '=', 'notes.area_id')
-                ->where('areas.user_id', $user->getKey())
-                ->whereNull('areas.deleted_at')
-                ->whereNull('notes.deleted_at')
+            $ids = $user->notes()
+                ->where(function (Builder $query): void {
+                    $query->whereNull('area_id')->orWhereHas('area');
+                })
                 ->whereIn('notes.uuid', $data['note_uuids'])
                 ->pluck('notes.id');
             $this->ensureAllResolved('note_uuids', $data['note_uuids'], $ids->all());

@@ -72,20 +72,37 @@ class TrashService
         });
     }
 
-    public function deleteNoteTree(User $user, Area $area, Note $note): TrashEntry
+    public function deleteNoteTree(User $user, Note $note, ?string $context = null): TrashEntry
     {
-        return DB::transaction(function () use ($user, $area, $note): TrashEntry {
+        return DB::transaction(function () use ($user, $note, $context): TrashEntry {
             $ids = collect([$note->getKey()]);
             $frontier = $ids;
             while ($frontier->isNotEmpty()) {
-                $frontier = Note::query()->whereIn('parent_id', $frontier)->pluck('id');
+                $frontier = Note::query()
+                    ->where('user_id', $user->getKey())
+                    ->whereIn('parent_id', $frontier)
+                    ->where(function ($query) use ($note): void {
+                        $query->where('area_id', $note->area_id);
+                        if ($note->area_id === null) {
+                            $query->orWhereNull('area_id');
+                        }
+                    })
+                    ->pluck('id');
                 $ids = $ids->merge($frontier);
             }
 
             $deletedAt = now();
             Note::query()->whereIn('id', $ids)->delete();
 
-            return $this->createEntry($user, $note, 'note', $note->title ?: 'Untitled note', $area->name, ['note_ids' => $ids->values()->all()], $deletedAt);
+            return $this->createEntry(
+                $user,
+                $note,
+                'note',
+                $note->title ?: 'Untitled note',
+                $context,
+                ['note_ids' => $ids->values()->all()],
+                $deletedAt,
+            );
         });
     }
 
@@ -207,7 +224,9 @@ class TrashService
             $subject instanceof Project => $subject->area_id && Area::withTrashed()->find($subject->area_id)?->trashed() !== false,
             $subject instanceof Board => $subject->context_type === 'project' && Project::withTrashed()->find($subject->context_id)?->trashed() !== false,
             $subject instanceof BoardTask => $this->boardUnavailable($subject->board_id),
-            $subject instanceof Goal, $subject instanceof Note => Area::withTrashed()->find($subject->area_id)?->trashed() !== false,
+            $subject instanceof Goal => Area::withTrashed()->find($subject->area_id)?->trashed() !== false,
+            $subject instanceof Note => $subject->area_id !== null
+                && Area::withTrashed()->find($subject->area_id)?->trashed() !== false,
             $subject instanceof BoardLabel => $this->boardUnavailable($subject->board_id),
             $subject instanceof ResourceAttachment => Resource::withTrashed()->find($subject->resource_id)?->trashed() !== false,
             default => false,

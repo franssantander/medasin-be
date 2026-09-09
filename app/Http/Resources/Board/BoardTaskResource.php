@@ -31,10 +31,10 @@ class BoardTaskResource extends JsonResource
             'notes' => $this->whenLoaded('notes', fn () => $this->notes->map(fn ($note) => [
                 'uuid' => $note->uuid,
                 'title' => $note->title,
-                'area' => [
+                'area' => $note->area ? [
                     'uuid' => $note->area->uuid,
                     'name' => $note->area->name,
-                ],
+                ] : null,
                 'created_at' => $note->created_at?->toISOString(),
                 'updated_at' => $note->updated_at?->toISOString(),
             ])),

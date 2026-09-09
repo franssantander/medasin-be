@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Data\Area;
+namespace App\Data\Note;
 
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;

@@ -17,7 +17,7 @@ class Note extends Model
 
     protected $appends = ['parent_uuid'];
 
-    protected $hidden = ['parent_id'];
+    protected $hidden = ['parent_id', 'user_id'];
 
     protected $attributes = [
         'is_pinned' => false,
@@ -26,6 +26,20 @@ class Note extends Model
     protected function casts(): array
     {
         return ['is_pinned' => 'boolean'];
+    }
+
+    protected static function booted(): void
+    {
+        static::creating(function (Note $note): void {
+            if ($note->user_id === null && $note->area_id !== null) {
+                $note->user_id = Area::query()->whereKey($note->area_id)->value('user_id');
+            }
+        });
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
     }
 
     public function area(): BelongsTo

@@ -84,6 +84,26 @@ class StandaloneBoardTest extends TestCase
         ])->assertOk()->assertJsonPath('data.stage', 'done');
     }
 
+    public function test_standalone_tasks_can_link_standalone_notes(): void
+    {
+        $user = User::factory()->create();
+        Passport::actingAs($user);
+        $noteUuid = $this->postJson(route('notes.store'), [
+            'title' => 'Idea',
+            'content' => 'Details',
+        ])->assertCreated()->json('data.uuid');
+        $boardUuid = $this->postJson(route('board.store'), ['name' => 'Life'])->assertCreated()->json('data.uuid');
+        $board = Board::where('uuid', $boardUuid)->firstOrFail();
+
+        $this->postJson(route('board.tasks.store', $board), [
+            'title' => 'Read idea',
+            'note_uuids' => [$noteUuid],
+        ])->assertCreated()
+            ->assertJsonCount(1, 'data.notes')
+            ->assertJsonPath('data.notes.0.uuid', $noteUuid)
+            ->assertJsonPath('data.notes.0.area', null);
+    }
+
     public function test_users_cannot_access_another_users_standalone_board(): void
     {
         $owner = User::factory()->create();

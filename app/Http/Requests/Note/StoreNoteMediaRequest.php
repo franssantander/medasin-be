@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Requests\Area;
+namespace App\Http\Requests\Note;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rules\File;

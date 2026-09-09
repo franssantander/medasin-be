@@ -1,23 +1,21 @@
 <?php
 
-namespace App\Services\Area;
+namespace App\Services\Note;
 
-use App\Data\Area\NoteData;
-use App\Models\Area;
+use App\Data\Note\NoteData;
 use App\Models\Note;
-use App\Models\NoteMedia;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class NoteService
 {
-    public function tree(Area $area): array
+    public function tree(HasMany $notes): array
     {
-        $notes = $area->notes()
+        $notes = $notes
             ->select(['id', 'uuid', 'parent_id', 'title', 'content', 'is_pinned', 'created_at', 'updated_at'])
             ->orderByDesc('is_pinned')
             ->latest('updated_at')
@@ -44,20 +42,27 @@ class NoteService
         return $build(0);
     }
 
-    public function create(Area $area, NoteData $data): Note
-    {
+    public function create(
+        HasMany $notes,
+        NoteData $data,
+        string $parentErrorMessage = 'The selected parent note is not available in this note collection.',
+    ): Note {
         $attributes = $data->toArray();
-        $parent = $this->resolveParent($area, Arr::pull($attributes, 'parent_uuid'));
+        $parent = $this->resolveParent($notes, Arr::pull($attributes, 'parent_uuid'), null, $parentErrorMessage);
         $attributes['parent_id'] = $parent?->getKey();
 
-        return $area->notes()->create($attributes)->fresh();
+        return $notes->create($attributes)->fresh();
     }
 
-    public function update(Area $area, Note $note, NoteData $data): Note
-    {
+    public function update(
+        HasMany $notes,
+        Note $note,
+        NoteData $data,
+        string $parentErrorMessage = 'The selected parent note is not available in this note collection.',
+    ): Note {
         $attributes = $data->toArray();
         if (array_key_exists('parent_uuid', $attributes)) {
-            $parent = $this->resolveParent($area, Arr::pull($attributes, 'parent_uuid'), $note);
+            $parent = $this->resolveParent($notes, Arr::pull($attributes, 'parent_uuid'), $note, $parentErrorMessage);
             $attributes['parent_id'] = $parent?->getKey();
         }
 
@@ -66,9 +71,9 @@ class NoteService
         return $note->fresh();
     }
 
-    public function storeMedia(Area $area, Note $note, UploadedFile $file): array
+    public function storeMedia(Note $note, string $directory, UploadedFile $file): array
     {
-        $path = $file->store("areas/{$area->uuid}/notes/{$note->uuid}", 'public');
+        $path = $file->store($directory, 'public');
         $media = $note->media()->create([
             'path' => $path,
             'original_name' => Str::limit($file->getClientOriginalName(), 250, ''),
@@ -86,37 +91,21 @@ class NoteService
         ];
     }
 
-    public function deleteTree(Note $note): void
-    {
-        $ids = collect([$note->getKey()]);
-        $frontier = $ids;
-
-        while ($frontier->isNotEmpty()) {
-            $frontier = Note::query()->whereIn('parent_id', $frontier)->pluck('id');
-            $ids = $ids->merge($frontier);
-        }
-
-        $paths = NoteMedia::query()->whereIn('note_id', $ids)->pluck('path');
-
-        DB::transaction(function () use ($ids): void {
-            NoteMedia::query()->whereIn('note_id', $ids)->delete();
-            Note::query()->whereIn('id', $ids)->delete();
-        });
-
-        Storage::disk('public')->delete($paths->all());
-    }
-
-    private function resolveParent(Area $area, ?string $parentUuid, ?Note $note = null): ?Note
-    {
+    private function resolveParent(
+        HasMany $notes,
+        ?string $parentUuid,
+        ?Note $note = null,
+        string $parentErrorMessage = 'The selected parent note is not available in this note collection.',
+    ): ?Note {
         if (! $parentUuid) {
             return null;
         }
 
-        $parent = $area->notes()->where('uuid', $parentUuid)->first();
+        $parent = (clone $notes)->where('uuid', $parentUuid)->first();
 
         if (! $parent) {
             throw ValidationException::withMessages([
-                'parent_uuid' => 'The selected parent note does not belong to this area.',
+                'parent_uuid' => $parentErrorMessage,
             ]);
         }
 
