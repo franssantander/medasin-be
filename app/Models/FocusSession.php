@@ -9,6 +9,7 @@ use App\Models\Concerns\HasUuid;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable(['task_title', 'type', 'status', 'duration_seconds', 'remaining_seconds', 'started_at', 'ends_at', 'paused_at', 'completed_at', 'cancelled_at', 'mood', 'reflection_note'])]
 class FocusSession extends Model
@@ -39,5 +40,10 @@ class FocusSession extends Model
     public function focusTask(): BelongsTo
     {
         return $this->belongsTo(FocusTask::class)->withTrashed();
+    }
+
+    public function journalEntry(): HasOne
+    {
+        return $this->hasOne(JournalEntry::class);
     }
 }

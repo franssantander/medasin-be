@@ -2,8 +2,11 @@
 
 namespace Tests\Feature\Focus;
 
+use App\Enum\FocusSessionStatus;
+use App\Enum\FocusSessionType;
 use App\Models\FocusSession;
 use App\Models\FocusTask;
+use App\Models\JournalEntry;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -77,6 +80,48 @@ class FocusTimerTest extends TestCase
         $session->refresh();
         $this->putJson(route('focus.sessions.reflection', $session), ['mood' => 'calm', 'note' => 'Good momentum.'])
             ->assertOk()->assertJsonPath('data.mood', 'calm')->assertJsonPath('data.reflection_note', 'Good momentum.');
+
+        $journalEntry = JournalEntry::query()->where('focus_session_id', $session->getKey())->firstOrFail();
+        $this->assertDatabaseCount('journal_entries', 1);
+        $this->getJson(route('journal.show', $journalEntry->uuid))
+            ->assertOk()
+            ->assertJsonPath('data.source.type', 'focus_reflection')
+            ->assertJsonPath('data.source.session_uuid', $session->uuid)
+            ->assertJsonPath('data.source.task_title', 'Draft notes')
+            ->assertJsonPath('data.source.mood', 'calm')
+            ->assertJsonPath('data.content_preview', 'Good momentum.');
+
+        $this->putJson(route('focus.sessions.reflection', $session), ['mood' => 'tired', 'note' => 'Needs a slower pace.'])
+            ->assertOk()
+            ->assertJsonPath('data.mood', 'tired')
+            ->assertJsonPath('data.reflection_note', 'Needs a slower pace.');
+        $this->assertDatabaseCount('journal_entries', 1);
+        $this->assertDatabaseHas('journal_entries', [
+            'id' => $journalEntry->getKey(),
+            'content_text' => 'Needs a slower pace.',
+        ]);
+    }
+
+    public function test_empty_focus_reflection_does_not_create_a_journal_entry(): void
+    {
+        $user = User::factory()->create();
+        $session = $user->focusSessions()->create([
+            'task_title' => 'Review goals',
+            'type' => FocusSessionType::FOCUS,
+            'status' => FocusSessionStatus::COMPLETED,
+            'duration_seconds' => 1500,
+            'remaining_seconds' => 0,
+            'started_at' => now()->subMinutes(25),
+            'completed_at' => now(),
+        ]);
+        Passport::actingAs($user);
+
+        $this->putJson(route('focus.sessions.reflection', $session), ['mood' => null, 'note' => null])
+            ->assertOk()
+            ->assertJsonPath('data.mood', null)
+            ->assertJsonPath('data.reflection_note', null);
+
+        $this->assertDatabaseCount('journal_entries', 0);
     }
 
     public function test_project_tasks_can_be_linked_without_changing_the_board_task_stage(): void

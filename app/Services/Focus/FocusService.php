@@ -11,6 +11,7 @@ use App\Models\FocusSetting;
 use App\Models\FocusTask;
 use App\Models\Project;
 use App\Models\User;
+use App\Services\Journal\JournalService;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -18,6 +19,8 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class FocusService
 {
+    public function __construct(private readonly JournalService $journalService) {}
+
     public function settings(User $user): FocusSetting
     {
         return $user->focusSetting()->firstOrCreate([])->refresh();
@@ -232,13 +235,25 @@ class FocusService
 
     public function reflect(User $user, FocusSession $session, array $data): FocusSession
     {
-        $session = $this->ownedSession($user, $session);
-        if ($session->type !== FocusSessionType::FOCUS || $session->status !== FocusSessionStatus::COMPLETED) {
-            throw new ConflictHttpException('Reflections can only be added to completed focus sessions.');
-        }
-        $session->update(['mood' => $data['mood'] ?? null, 'reflection_note' => $data['note'] ?? null]);
+        return DB::transaction(function () use ($user, $session, $data): FocusSession {
+            $session = $this->ownedSession($user, $session);
+            if ($session->type !== FocusSessionType::FOCUS || $session->status !== FocusSessionStatus::COMPLETED) {
+                throw new ConflictHttpException('Reflections can only be added to completed focus sessions.');
+            }
 
-        return $this->loadSession($session);
+            $note = array_key_exists('note', $data) && $data['note'] !== null
+                ? trim($data['note'])
+                : null;
+            $note = $note === '' ? null : $note;
+            $mood = $data['mood'] ?? null;
+            $session->update(['mood' => $mood, 'reflection_note' => $note]);
+
+            if ($mood !== null || $note !== null) {
+                $this->journalService->upsertFocusReflection($user, $session, $mood, $note);
+            }
+
+            return $this->loadSession($session);
+        });
     }
 
     private function reconcileExpired(User $user): void

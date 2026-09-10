@@ -68,4 +68,10 @@ class Resource extends Model
     {
         return $this->belongsToMany(BoardTask::class, 'board_task_resource');
     }
+
+    public function journalEntries(): BelongsToMany
+    {
+        return $this->belongsToMany(JournalEntry::class)
+            ->withTimestamps();
+    }
 }
