@@ -9,6 +9,7 @@ use App\Models\BoardTask;
 use App\Models\Goal;
 use App\Models\Habit;
 use App\Models\JournalEntry;
+use App\Models\Letter;
 use App\Models\Note;
 use App\Models\NoteMedia;
 use App\Models\Project;
@@ -23,7 +24,7 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class TrashService
 {
-    public const TYPES = ['area', 'project', 'board', 'task', 'goal', 'habit', 'note', 'journal_entry', 'board_label', 'resource_attachment'];
+    public const TYPES = ['area', 'project', 'board', 'task', 'goal', 'habit', 'note', 'journal_entry', 'letter', 'board_label', 'resource_attachment'];
 
     public function delete(User $user, Model $subject, string $itemType, string $title, ?string $context = null): TrashEntry
     {
@@ -213,7 +214,7 @@ class TrashService
     private function subject(TrashEntry $entry): Model
     {
         $class = $entry->subject_type;
-        $allowed = [Area::class, Project::class, Board::class, BoardTask::class, Goal::class, Habit::class, Note::class, JournalEntry::class, BoardLabel::class, ResourceAttachment::class];
+        $allowed = [Area::class, Project::class, Board::class, BoardTask::class, Goal::class, Habit::class, Note::class, JournalEntry::class, Letter::class, BoardLabel::class, ResourceAttachment::class];
         abort_unless(in_array($class, $allowed, true), 404);
 
         return $class::withTrashed()->findOrFail($entry->subject_id);

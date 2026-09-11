@@ -92,4 +92,9 @@ class User extends Authenticatable
     {
         return $this->hasMany(JournalEntry::class);
     }
+
+    public function letters(): HasMany
+    {
+        return $this->hasMany(Letter::class);
+    }
 }
