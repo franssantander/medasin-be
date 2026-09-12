@@ -286,6 +286,7 @@ class LetterModuleTest extends TestCase
         $this->assertSame('final', $export->pages[1]['kind']);
         $this->assertSame('body', $export->pages[1]['layout']);
         $this->assertEquals(1.0, $export->pages[0]['text_scale']);
+        $this->assertSame('auto', $export->pages[0]['text_scale_mode']);
         $this->assertSame('Mina Reyes', $export->pages[1]['signature']['name']);
         $this->assertSame('@minareads', $export->pages[1]['signature']['handle']);
         $this->assertSame('A public note', $export->pages[0]['title']);
@@ -337,6 +338,7 @@ class LetterModuleTest extends TestCase
                     'uuid' => '11111111-1111-4111-8111-111111111111',
                     'layout' => 'cover',
                     'text_scale' => 1.15,
+                    'text_scale_mode' => 'manual',
                     'title' => 'A custom cover',
                     'subtitle' => 'Prepared for sharing',
                     'blocks' => [],
@@ -345,6 +347,7 @@ class LetterModuleTest extends TestCase
                     'uuid' => '33333333-3333-4333-8333-333333333333',
                     'layout' => 'quote',
                     'text_scale' => 0.85,
+                    'text_scale_mode' => 'manual',
                     'title' => null,
                     'subtitle' => null,
                     'blocks' => [['type' => 'quote', 'content' => 'Keep only this thought.']],
@@ -353,6 +356,7 @@ class LetterModuleTest extends TestCase
                     'uuid' => '22222222-2222-4222-8222-222222222222',
                     'layout' => 'body',
                     'text_scale' => 1.3,
+                    'text_scale_mode' => 'auto',
                     'title' => null,
                     'subtitle' => null,
                     'blocks' => [['type' => 'paragraph', 'content' => 'Closing copy.']],
@@ -363,9 +367,11 @@ class LetterModuleTest extends TestCase
             ->assertJsonPath('data.page_count', 3)
             ->assertJsonPath('data.pages.0.title', 'A custom cover')
             ->assertJsonPath('data.pages.0.text_scale', 1.15)
+            ->assertJsonPath('data.pages.0.text_scale_mode', 'manual')
             ->assertJsonPath('data.pages.1.kind', 'body')
             ->assertJsonPath('data.pages.1.layout', 'quote')
             ->assertJsonPath('data.pages.1.text_scale', 0.85)
+            ->assertJsonPath('data.pages.1.text_scale_mode', 'manual')
             ->assertJsonPath('data.pages.2.kind', 'final')
             ->assertJsonPath('data.pages.2.signature.handle', '@minareads');
 
@@ -416,7 +422,7 @@ class LetterModuleTest extends TestCase
                 [
                     'uuid' => '11111111-1111-4111-8111-111111111111',
                     'layout' => 'cover',
-                    'text_scale' => 0.7,
+                    'text_scale' => 0.65,
                     'title' => null,
                     'subtitle' => null,
                     'blocks' => [],

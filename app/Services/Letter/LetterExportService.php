@@ -81,6 +81,7 @@ class LetterExportService
                     'kind' => $isCover ? 'cover' : ($isFinal ? 'final' : 'body'),
                     'layout' => $page['layout'],
                     'text_scale' => (float) ($page['text_scale'] ?? 1),
+                    'text_scale_mode' => $page['text_scale_mode'] ?? 'auto',
                     'title' => $isCover ? ($page['title'] ?? null) : null,
                     'subtitle' => $isCover ? ($page['subtitle'] ?? null) : null,
                     'blocks' => $isCover ? [] : array_values($page['blocks']),
