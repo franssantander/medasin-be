@@ -4,6 +4,7 @@ namespace App\Services\Letter;
 
 use App\Enum\LetterExportFormat;
 use App\Models\Letter;
+use Illuminate\Support\Str;
 
 class LetterPaginationService
 {
@@ -47,8 +48,11 @@ class LetterPaginationService
         }
 
         $pages = [[
+            'uuid' => (string) Str::uuid(),
             'number' => 1,
             'kind' => 'cover',
+            'layout' => 'cover',
+            'text_scale' => 1.0,
             'title' => $letter->title,
             'subtitle' => $letter->subtitle,
             'blocks' => [],
@@ -60,8 +64,11 @@ class LetterPaginationService
         foreach ($contentPages as $index => $blocks) {
             $isFinal = $index === array_key_last($contentPages);
             $pages[] = [
+                'uuid' => (string) Str::uuid(),
                 'number' => count($pages) + 1,
                 'kind' => $isFinal ? 'final' : 'body',
+                'layout' => 'body',
+                'text_scale' => 1.0,
                 'title' => null,
                 'subtitle' => null,
                 'blocks' => array_values($blocks),

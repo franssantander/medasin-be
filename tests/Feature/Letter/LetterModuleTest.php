@@ -174,7 +174,7 @@ class LetterModuleTest extends TestCase
             ->assertJsonValidationErrors('content');
 
         $letter = Letter::factory()->for($user)->create();
-        $this->postJson(route('letters.exports.store', $letter->uuid), ['format' => 'landscape'])
+        $this->postJson(route('letters.exports.store', $letter->uuid), ['format' => 'banner'])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('format');
 
@@ -192,8 +192,16 @@ class LetterModuleTest extends TestCase
         $this->deleteJson(route('letters.destroy', $letter->uuid))->assertNotFound();
         $this->postJson(route('letters.exports.store', $letter->uuid))->assertNotFound();
 
+        $export = LetterExport::factory()->for($letter)->create();
+        $this->patchJson(route('letters.exports.update', [$letter->uuid, $export->uuid]), [
+            'pages' => [
+                ['uuid' => '11111111-1111-4111-8111-111111111111', 'layout' => 'cover', 'title' => null, 'subtitle' => null, 'blocks' => []],
+                ['uuid' => '22222222-2222-4222-8222-222222222222', 'layout' => 'body', 'title' => null, 'subtitle' => null, 'blocks' => []],
+            ],
+        ])->assertNotFound();
+
         $this->assertModelExists($letter);
-        $this->assertDatabaseCount('letter_exports', 0);
+        $this->assertDatabaseCount('letter_exports', 1);
         $this->assertDatabaseCount('trash_entries', 0);
     }
 
@@ -226,6 +234,27 @@ class LetterModuleTest extends TestCase
         ]);
     }
 
+    public function test_story_and_landscape_export_requests_use_social_canvas_profiles(): void
+    {
+        $user = User::factory()->create();
+        $letter = Letter::factory()->for($user)->create();
+        Queue::fake();
+        Passport::actingAs($user);
+
+        $this->postJson(route('letters.exports.store', $letter->uuid), ['format' => 'story'])
+            ->assertAccepted()
+            ->assertJsonPath('data.canvas.width', 1080)
+            ->assertJsonPath('data.canvas.height', 1920);
+
+        $this->postJson(route('letters.exports.store', $letter->uuid), ['format' => 'landscape'])
+            ->assertAccepted()
+            ->assertJsonPath('data.canvas.width', 1920)
+            ->assertJsonPath('data.canvas.height', 1080);
+
+        $this->assertDatabaseHas('letter_exports', ['letter_id' => $letter->getKey(), 'format' => 'story']);
+        $this->assertDatabaseHas('letter_exports', ['letter_id' => $letter->getKey(), 'format' => 'landscape']);
+    }
+
     public function test_export_job_creates_cover_and_final_signature_pages_and_marks_current_letter_exported(): void
     {
         $user = User::factory()->create([
@@ -252,10 +281,158 @@ class LetterModuleTest extends TestCase
         $this->assertSame(LetterStatus::EXPORTED, $letter->status);
         $this->assertSame(2, $export->page_count);
         $this->assertSame('cover', $export->pages[0]['kind']);
+        $this->assertSame('cover', $export->pages[0]['layout']);
+        $this->assertNotEmpty($export->pages[0]['uuid']);
         $this->assertSame('final', $export->pages[1]['kind']);
+        $this->assertSame('body', $export->pages[1]['layout']);
+        $this->assertEquals(1.0, $export->pages[0]['text_scale']);
         $this->assertSame('Mina Reyes', $export->pages[1]['signature']['name']);
         $this->assertSame('@minareads', $export->pages[1]['signature']['handle']);
         $this->assertSame('A public note', $export->pages[0]['title']);
+    }
+
+    public function test_ready_export_pages_can_be_customized_and_are_normalized(): void
+    {
+        $user = User::factory()->create([
+            'first_name' => 'Mina',
+            'last_name' => 'Reyes',
+            'username' => 'minareads',
+        ]);
+        $letter = Letter::factory()->for($user)->create();
+        $export = LetterExport::factory()->for($letter)->create([
+            'status' => LetterExportStatus::READY,
+            'pages' => [
+                [
+                    'uuid' => '11111111-1111-4111-8111-111111111111',
+                    'number' => 1,
+                    'kind' => 'cover',
+                    'layout' => 'cover',
+                    'title' => 'Old title',
+                    'subtitle' => null,
+                    'blocks' => [],
+                    'signature' => null,
+                    'truncated' => false,
+                    'continuation_label' => null,
+                ],
+                [
+                    'uuid' => '22222222-2222-4222-8222-222222222222',
+                    'number' => 2,
+                    'kind' => 'final',
+                    'layout' => 'body',
+                    'title' => null,
+                    'subtitle' => null,
+                    'blocks' => [['type' => 'paragraph', 'content' => 'Old copy']],
+                    'signature' => ['name' => 'Mina Reyes', 'handle' => '@minareads'],
+                    'truncated' => false,
+                    'continuation_label' => null,
+                ],
+            ],
+            'page_count' => 2,
+        ]);
+        Passport::actingAs($user);
+
+        $response = $this->patchJson(route('letters.exports.update', [$letter->uuid, $export->uuid]), [
+            'pages' => [
+                [
+                    'uuid' => '11111111-1111-4111-8111-111111111111',
+                    'layout' => 'cover',
+                    'text_scale' => 1.15,
+                    'title' => 'A custom cover',
+                    'subtitle' => 'Prepared for sharing',
+                    'blocks' => [],
+                ],
+                [
+                    'uuid' => '33333333-3333-4333-8333-333333333333',
+                    'layout' => 'quote',
+                    'text_scale' => 0.85,
+                    'title' => null,
+                    'subtitle' => null,
+                    'blocks' => [['type' => 'quote', 'content' => 'Keep only this thought.']],
+                ],
+                [
+                    'uuid' => '22222222-2222-4222-8222-222222222222',
+                    'layout' => 'body',
+                    'text_scale' => 1.3,
+                    'title' => null,
+                    'subtitle' => null,
+                    'blocks' => [['type' => 'paragraph', 'content' => 'Closing copy.']],
+                ],
+            ],
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.page_count', 3)
+            ->assertJsonPath('data.pages.0.title', 'A custom cover')
+            ->assertJsonPath('data.pages.0.text_scale', 1.15)
+            ->assertJsonPath('data.pages.1.kind', 'body')
+            ->assertJsonPath('data.pages.1.layout', 'quote')
+            ->assertJsonPath('data.pages.1.text_scale', 0.85)
+            ->assertJsonPath('data.pages.2.kind', 'final')
+            ->assertJsonPath('data.pages.2.signature.handle', '@minareads');
+
+        $export->refresh();
+        $this->assertSame(3, $export->page_count);
+        $this->assertSame(1.3, $export->pages[2]['text_scale']);
+        $this->assertSame('Keep only this thought.', $export->pages[1]['blocks'][0]['content']);
+    }
+
+    public function test_export_page_customization_validates_cover_and_ready_status(): void
+    {
+        $user = User::factory()->create();
+        $letter = Letter::factory()->for($user)->create();
+        $export = LetterExport::factory()->for($letter)->create();
+        Passport::actingAs($user);
+        $pageUuid = '11111111-1111-4111-8111-111111111111';
+
+        $this->patchJson(route('letters.exports.update', [$letter->uuid, $export->uuid]), [
+            'pages' => [
+                ['uuid' => $pageUuid, 'layout' => 'body', 'title' => null, 'subtitle' => null, 'blocks' => []],
+                ['uuid' => $pageUuid, 'layout' => 'cover', 'title' => null, 'subtitle' => null, 'blocks' => []],
+            ],
+        ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['pages.0.layout', 'pages.1.uuid', 'pages.1.layout']);
+
+        $this->patchJson(route('letters.exports.update', [$letter->uuid, $export->uuid]), [
+            'pages' => [
+                ['uuid' => '11111111-1111-4111-8111-111111111111', 'layout' => 'cover', 'title' => null, 'subtitle' => null, 'blocks' => []],
+                ['uuid' => '22222222-2222-4222-8222-222222222222', 'layout' => 'body', 'title' => null, 'subtitle' => null, 'blocks' => []],
+            ],
+        ])->assertConflict();
+
+        $this->assertNull($export->fresh()->pages);
+    }
+
+    public function test_export_page_text_scale_must_stay_within_the_supported_range(): void
+    {
+        $user = User::factory()->create();
+        $letter = Letter::factory()->for($user)->create();
+        $export = LetterExport::factory()->for($letter)->create([
+            'status' => LetterExportStatus::READY,
+        ]);
+        Passport::actingAs($user);
+
+        $this->patchJson(route('letters.exports.update', [$letter->uuid, $export->uuid]), [
+            'pages' => [
+                [
+                    'uuid' => '11111111-1111-4111-8111-111111111111',
+                    'layout' => 'cover',
+                    'text_scale' => 0.7,
+                    'title' => null,
+                    'subtitle' => null,
+                    'blocks' => [],
+                ],
+                [
+                    'uuid' => '22222222-2222-4222-8222-222222222222',
+                    'layout' => 'body',
+                    'text_scale' => 1.5,
+                    'title' => null,
+                    'subtitle' => null,
+                    'blocks' => [],
+                ],
+            ],
+        ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['pages.0.text_scale', 'pages.1.text_scale']);
     }
 
     public function test_export_job_caps_long_content_at_ten_pages_with_a_continuation_label(): void

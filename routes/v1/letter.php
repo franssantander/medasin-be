@@ -20,4 +20,5 @@ Route::prefix('letters/{letter}/exports')
         Route::get('/', [LetterExportController::class, 'index'])->name('index');
         Route::post('/', [LetterExportController::class, 'store'])->name('store');
         Route::get('/{letterExport}', [LetterExportController::class, 'show'])->name('show');
+        Route::patch('/{letterExport}', [LetterExportController::class, 'update'])->name('update');
     });

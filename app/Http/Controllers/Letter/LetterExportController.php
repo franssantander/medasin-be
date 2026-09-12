@@ -6,6 +6,7 @@ use App\Enum\LetterExportFormat;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Letter\ListLetterExportRequest;
 use App\Http\Requests\Letter\StoreLetterExportRequest;
+use App\Http\Requests\Letter\UpdateLetterExportRequest;
 use App\Http\Resources\Letter\LetterExportResource;
 use App\Models\Letter;
 use App\Models\LetterExport;
@@ -49,5 +50,20 @@ class LetterExportController extends Controller
         $letterExport = $this->exportService->find($letter, $letterExport);
 
         return $this->success(LetterExportResource::make($letterExport)->resolve($request));
+    }
+
+    public function update(UpdateLetterExportRequest $request, Letter $letter, LetterExport $letterExport): JsonResponse
+    {
+        $letter = $this->letterService->find($request->user(), $letter);
+        $letterExport = $this->exportService->updatePages(
+            $letter,
+            $letterExport,
+            $request->validated('pages'),
+        );
+
+        return $this->success(
+            LetterExportResource::make($letterExport)->resolve($request),
+            'Letter pages saved.',
+        );
     }
 }
