@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('letters')->name('letters.')->middleware('auth:api')->group(function () {
     Route::get('/', [LetterController::class, 'index'])->name('index');
     Route::post('/', [LetterController::class, 'store'])->name('store');
+    Route::post('/{letter}/media', [LetterController::class, 'storeMedia'])->name('media.store');
     Route::get('/{letter}', [LetterController::class, 'show'])->name('show');
     Route::match(['put', 'patch'], '/{letter}', [LetterController::class, 'update'])->name('update');
     Route::delete('/{letter}', [LetterController::class, 'destroy'])->name('destroy');

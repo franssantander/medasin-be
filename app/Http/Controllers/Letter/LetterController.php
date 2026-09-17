@@ -6,6 +6,7 @@ use App\Data\Letter\LetterData;
 use App\Enum\LetterStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Letter\ListLetterRequest;
+use App\Http\Requests\Letter\StoreLetterMediaRequest;
 use App\Http\Requests\Letter\StoreLetterRequest;
 use App\Http\Requests\Letter\UpdateLetterRequest;
 use App\Http\Resources\Letter\LetterResource;
@@ -56,6 +57,17 @@ class LetterController extends Controller
 
         return $this->success(
             LetterResource::make($letter)->withContent()->resolve($request),
+        );
+    }
+
+    public function storeMedia(StoreLetterMediaRequest $request, Letter $letter): JsonResponse
+    {
+        $letter = $this->letterService->find($request->user(), $letter);
+
+        return $this->success(
+            $this->letterService->storeMedia($letter, $request->file('file')),
+            'Successfully uploaded letter image.',
+            201,
         );
     }
 

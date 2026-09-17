@@ -8,11 +8,14 @@ use App\Enum\LetterStatus;
 use App\Jobs\Letter\GenerateLetterExport;
 use App\Models\Letter;
 use App\Models\LetterExport;
+use App\Models\LetterMedia;
 use App\Models\TrashEntry;
 use App\Models\User;
 use App\Services\Letter\LetterPaginationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Passport\Passport;
 use Tests\TestCase;
 
@@ -234,6 +237,77 @@ class LetterModuleTest extends TestCase
         ]);
     }
 
+    public function test_browser_measured_pages_create_a_ready_export_without_a_queue_job(): void
+    {
+        $user = User::factory()->create([
+            'first_name' => 'Mina',
+            'last_name' => 'Reyes',
+            'username' => 'minareads',
+        ]);
+        $letter = Letter::factory()->for($user)->create();
+        Queue::fake();
+        Passport::actingAs($user);
+
+        $response = $this->postJson(route('letters.exports.store', $letter->uuid), [
+            'format' => LetterExportFormat::PORTRAIT->value,
+            'pages' => [
+                [
+                    'uuid' => '11111111-1111-4111-8111-111111111111',
+                    'layout' => 'cover',
+                    'text_scale' => 1,
+                    'text_scale_mode' => 'auto',
+                    'title' => 'Measured cover',
+                    'subtitle' => null,
+                    'blocks' => [],
+                ],
+                [
+                    'uuid' => '22222222-2222-4222-8222-222222222222',
+                    'layout' => 'body',
+                    'text_scale' => 1,
+                    'text_scale_mode' => 'auto',
+                    'title' => null,
+                    'subtitle' => null,
+                    'blocks' => [['type' => 'paragraph', 'content' => 'Measured body.']],
+                ],
+            ],
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.status', 'ready')
+            ->assertJsonPath('data.page_count', 2)
+            ->assertJsonPath('data.pages.0.title', 'Measured cover')
+            ->assertJsonPath('data.pages.1.kind', 'final')
+            ->assertJsonPath('data.pages.1.signature.handle', '@minareads');
+
+        Queue::assertNothingPushed();
+        $letter->refresh();
+        $this->assertSame(LetterStatus::EXPORTED, $letter->status);
+        $this->assertNotNull($letter->exported_at);
+    }
+
+    public function test_browser_measured_export_accepts_more_than_ten_auto_fitted_pages(): void
+    {
+        $user = User::factory()->create();
+        $letter = Letter::factory()->for($user)->create();
+        Queue::fake();
+        Passport::actingAs($user);
+
+        $this->postJson(route('letters.exports.store', $letter->uuid), [
+            'format' => LetterExportFormat::PORTRAIT->value,
+            'pages' => $this->measuredPages(11, 0.1),
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.status', 'ready')
+            ->assertJsonPath('data.page_count', 11)
+            ->assertJsonPath('data.pages.0.text_scale', 0.1)
+            ->assertJsonCount(11, 'data.pages');
+
+        Queue::assertNothingPushed();
+        $this->assertDatabaseHas('letter_exports', [
+            'letter_id' => $letter->getKey(),
+            'page_count' => 11,
+        ]);
+    }
+
     public function test_story_and_landscape_export_requests_use_social_canvas_profiles(): void
     {
         $user = User::factory()->create();
@@ -364,21 +438,32 @@ class LetterModuleTest extends TestCase
             ],
         ])
             ->assertOk()
-            ->assertJsonPath('data.page_count', 3)
-            ->assertJsonPath('data.pages.0.title', 'A custom cover')
-            ->assertJsonPath('data.pages.0.text_scale', 1.15)
-            ->assertJsonPath('data.pages.0.text_scale_mode', 'manual')
-            ->assertJsonPath('data.pages.1.kind', 'body')
-            ->assertJsonPath('data.pages.1.layout', 'quote')
-            ->assertJsonPath('data.pages.1.text_scale', 0.85)
-            ->assertJsonPath('data.pages.1.text_scale_mode', 'manual')
-            ->assertJsonPath('data.pages.2.kind', 'final')
-            ->assertJsonPath('data.pages.2.signature.handle', '@minareads');
+            ->assertJsonPath('data.export.page_count', 3)
+            ->assertJsonPath('data.export.pages.0.title', 'A custom cover')
+            ->assertJsonPath('data.export.pages.0.text_scale', 1.15)
+            ->assertJsonPath('data.export.pages.0.text_scale_mode', 'manual')
+            ->assertJsonPath('data.export.pages.1.kind', 'body')
+            ->assertJsonPath('data.export.pages.1.layout', 'quote')
+            ->assertJsonPath('data.export.pages.1.text_scale', 0.85)
+            ->assertJsonPath('data.export.pages.1.text_scale_mode', 'manual')
+            ->assertJsonPath('data.export.pages.2.kind', 'final')
+            ->assertJsonPath('data.export.pages.2.signature.handle', '@minareads')
+            ->assertJsonPath('data.export.is_current', true)
+            ->assertJsonPath('data.letter.title', 'A custom cover')
+            ->assertJsonPath('data.letter.subtitle', 'Prepared for sharing');
 
         $export->refresh();
         $this->assertSame(3, $export->page_count);
         $this->assertSame(1.3, $export->pages[2]['text_scale']);
         $this->assertSame('Keep only this thought.', $export->pages[1]['blocks'][0]['content']);
+        $letter->refresh();
+        $this->assertSame('A custom cover', $letter->title);
+        $this->assertSame('Prepared for sharing', $letter->subtitle);
+        $this->assertSame([
+            ['type' => 'quote', 'content' => 'Keep only this thought.'],
+            ['type' => 'paragraph', 'content' => 'Closing copy.'],
+        ], json_decode($letter->content, true, 512, JSON_THROW_ON_ERROR)['blocks']);
+        $this->assertSame($letter->sourceHash(), $export->source_hash);
     }
 
     public function test_export_page_customization_validates_cover_and_ready_status(): void
@@ -422,7 +507,7 @@ class LetterModuleTest extends TestCase
                 [
                     'uuid' => '11111111-1111-4111-8111-111111111111',
                     'layout' => 'cover',
-                    'text_scale' => 0.65,
+                    'text_scale' => 0.05,
                     'title' => null,
                     'subtitle' => null,
                     'blocks' => [],
@@ -439,6 +524,28 @@ class LetterModuleTest extends TestCase
         ])
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['pages.0.text_scale', 'pages.1.text_scale']);
+    }
+
+    public function test_ready_export_accepts_more_than_ten_auto_fitted_pages(): void
+    {
+        $user = User::factory()->create();
+        $letter = Letter::factory()->for($user)->create();
+        $export = LetterExport::factory()->for($letter)->create([
+            'status' => LetterExportStatus::READY,
+            'pages' => $this->measuredPages(2),
+            'page_count' => 2,
+        ]);
+        Passport::actingAs($user);
+
+        $this->patchJson(route('letters.exports.update', [$letter->uuid, $export->uuid]), [
+            'pages' => $this->measuredPages(11, 0.1),
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.export.page_count', 11)
+            ->assertJsonPath('data.export.pages.10.text_scale', 0.1)
+            ->assertJsonCount(11, 'data.export.pages');
+
+        $this->assertSame(11, $export->fresh()->page_count);
     }
 
     public function test_export_job_caps_long_content_at_ten_pages_with_a_continuation_label(): void
@@ -459,6 +566,30 @@ class LetterModuleTest extends TestCase
         $this->assertTrue($export->pages[9]['truncated']);
         $this->assertSame('Continued in the app', $export->pages[9]['continuation_label']);
         $this->assertSame('final', $export->pages[9]['kind']);
+    }
+
+    public function test_export_job_fills_body_pages_before_creating_the_next_page(): void
+    {
+        $user = User::factory()->create();
+        $paragraphs = array_map(
+            fn (int $index): string => "Short paragraph {$index}.",
+            range(1, 40),
+        );
+        $letter = Letter::factory()->for($user)->create([
+            'content' => $this->document(...$paragraphs),
+        ]);
+        $export = LetterExport::factory()->for($letter)->create([
+            'source_hash' => $letter->sourceHash(),
+            'format' => LetterExportFormat::PORTRAIT,
+        ]);
+
+        (new GenerateLetterExport($export))->handle($this->app->make(LetterPaginationService::class));
+
+        $export->refresh();
+        $this->assertSame(3, $export->page_count);
+        $this->assertCount(27, $export->pages[1]['blocks']);
+        $this->assertCount(13, $export->pages[2]['blocks']);
+        $this->assertSame('Short paragraph 28.', $export->pages[2]['blocks'][0]['content']);
     }
 
     public function test_stale_export_does_not_mark_an_edited_letter_as_exported(): void
@@ -502,6 +633,84 @@ class LetterModuleTest extends TestCase
         $this->assertDatabaseMissing('trash_entries', ['id' => $trashEntry->getKey()]);
     }
 
+    public function test_user_can_upload_an_image_to_their_letter(): void
+    {
+        Storage::fake('public');
+        $user = User::factory()->create();
+        $letter = Letter::factory()->for($user)->create();
+        Passport::actingAs($user);
+
+        $response = $this->postJson(route('letters.media.store', $letter->uuid), [
+            'file' => UploadedFile::fake()->create('letter-image.png', 120, 'image/png'),
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.kind', 'image')
+            ->assertJsonPath('data.name', 'letter-image.png')
+            ->assertJsonPath('data.mime_type', 'image/png');
+
+        $media = LetterMedia::query()->where('uuid', $response->json('data.uuid'))->sole();
+
+        $this->assertSame($letter->getKey(), $media->letter_id);
+        Storage::disk('public')->assertExists($media->path);
+    }
+
+    public function test_letter_image_upload_is_scoped_to_the_owner(): void
+    {
+        Storage::fake('public');
+        $owner = User::factory()->create();
+        $letter = Letter::factory()->for($owner)->create();
+        Passport::actingAs(User::factory()->create());
+
+        $this->postJson(route('letters.media.store', $letter->uuid), [
+            'file' => UploadedFile::fake()->create('private.png', 120, 'image/png'),
+        ])->assertNotFound();
+
+        $this->assertDatabaseCount('letter_media', 0);
+    }
+
+    public function test_letter_media_rejects_non_images_and_oversized_images(): void
+    {
+        Storage::fake('public');
+        $user = User::factory()->create();
+        $letter = Letter::factory()->for($user)->create();
+        Passport::actingAs($user);
+
+        $this->postJson(route('letters.media.store', $letter->uuid), [
+            'file' => UploadedFile::fake()->create('document.pdf', 100, 'application/pdf'),
+        ])->assertUnprocessable()->assertJsonValidationErrors('file');
+
+        $this->postJson(route('letters.media.store', $letter->uuid), [
+            'file' => UploadedFile::fake()->create('large.jpg', 10 * 1024 + 1, 'image/jpeg'),
+        ])->assertUnprocessable()->assertJsonValidationErrors('file');
+    }
+
+    public function test_permanently_deleting_a_letter_removes_uploaded_images(): void
+    {
+        Storage::fake('public');
+        $user = User::factory()->create();
+        $letter = Letter::factory()->for($user)->create(['title' => 'Letter with image']);
+        $path = UploadedFile::fake()->create('stored.png', 120, 'image/png')->store(
+            "letters/{$user->uuid}/{$letter->uuid}",
+            'public',
+        );
+        $letter->media()->create([
+            'path' => $path,
+            'original_name' => 'stored.png',
+            'mime_type' => 'image/png',
+            'size' => Storage::disk('public')->size($path),
+        ]);
+        Passport::actingAs($user);
+
+        $this->deleteJson(route('letters.destroy', $letter->uuid))->assertOk();
+        $trashEntry = TrashEntry::query()->where('item_type', 'letter')->sole();
+        Storage::disk('public')->assertExists($path);
+
+        $this->deleteJson(route('trash.destroy', $trashEntry->uuid))->assertOk();
+
+        Storage::disk('public')->assertMissing($path);
+        $this->assertDatabaseCount('letter_media', 0);
+    }
+
     private function document(string ...$paragraphs): string
     {
         return json_encode([
@@ -514,5 +723,24 @@ class LetterModuleTest extends TestCase
                 $paragraphs,
             ),
         ], JSON_THROW_ON_ERROR);
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function measuredPages(int $count, float $textScale = 1): array
+    {
+        return array_map(
+            fn (int $index): array => [
+                'uuid' => sprintf('%08d-0000-4000-8000-%012d', $index, $index),
+                'layout' => $index === 1 ? 'cover' : 'body',
+                'text_scale' => $textScale,
+                'text_scale_mode' => 'auto',
+                'title' => $index === 1 ? 'Measured cover' : null,
+                'subtitle' => null,
+                'blocks' => $index === 1
+                    ? []
+                    : [['type' => 'paragraph', 'content' => "Measured body {$index}."]],
+            ],
+            range(1, $count),
+        );
     }
 }

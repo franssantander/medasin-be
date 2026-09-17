@@ -4,6 +4,7 @@ namespace App\Services\Letter;
 
 use App\Enum\LetterExportFormat;
 use App\Enum\LetterExportStatus;
+use App\Enum\LetterStatus;
 use App\Jobs\Letter\GenerateLetterExport;
 use App\Models\Letter;
 use App\Models\LetterExport;
@@ -15,22 +16,42 @@ class LetterExportService
 {
     public function __construct(
         private readonly LetterPaginationService $pagination,
+        private readonly LetterContentService $content,
     ) {}
 
-    public function create(Letter $letter, LetterExportFormat $format): LetterExport
+    /**
+     * @param  array<int, array<string, mixed>>|null  $pages
+     */
+    public function create(Letter $letter, LetterExportFormat $format, ?array $pages = null): LetterExport
     {
         $profile = $this->pagination->profile($format);
 
-        $export = DB::transaction(function () use ($letter, $format, $profile): LetterExport {
+        $export = DB::transaction(function () use ($letter, $format, $profile, $pages): LetterExport {
+            $preparedPages = $pages === null
+                ? null
+                : $this->normalizePages($pages, $this->signature($letter));
             $export = $letter->exports()->create([
                 'format' => $format,
                 'canvas_width' => $profile['width'],
                 'canvas_height' => $profile['height'],
                 'source_hash' => $letter->sourceHash(),
-                'status' => LetterExportStatus::QUEUED,
+                'status' => $preparedPages === null
+                    ? LetterExportStatus::QUEUED
+                    : LetterExportStatus::READY,
+                'pages' => $preparedPages,
+                'page_count' => $preparedPages === null ? null : count($preparedPages),
+                'started_at' => $preparedPages === null ? null : now(),
+                'completed_at' => $preparedPages === null ? null : now(),
             ]);
 
-            GenerateLetterExport::dispatch($export)->afterCommit();
+            if ($preparedPages === null) {
+                GenerateLetterExport::dispatch($export)->afterCommit();
+            } else {
+                $letter->forceFill([
+                    'status' => LetterStatus::EXPORTED,
+                    'exported_at' => now(),
+                ])->save();
+            }
 
             return $export;
         });
@@ -68,9 +89,55 @@ class LetterExportService
         $existingPages = $export->pages ?? [];
         $signature = collect($existingPages)->firstWhere('signature', '!=', null)['signature'] ?? null;
         $truncatedPage = collect($existingPages)->firstWhere('truncated', true);
+        $normalizedPages = $this->normalizePages($pages, $signature, $truncatedPage);
+
+        DB::transaction(function () use ($letter, $export, $normalizedPages): void {
+            $cover = $normalizedPages[0];
+            $title = trim((string) ($cover['title'] ?? ''));
+            $subtitle = trim((string) ($cover['subtitle'] ?? ''));
+            $blocks = collect(array_slice($normalizedPages, 1))
+                ->flatMap(fn (array $page): array => $page['blocks'])
+                ->values()
+                ->all();
+            $content = json_encode([
+                'version' => 1,
+                'blocks' => $blocks,
+            ], JSON_THROW_ON_ERROR);
+            $contentText = $this->content->text($content);
+            $wordCount = $this->content->wordCount($contentText);
+
+            $letter->forceFill([
+                'title' => $title !== '' ? $title : 'Untitled letter',
+                'subtitle' => $subtitle !== '' ? $subtitle : null,
+                'content' => $content,
+                'content_text' => $contentText !== '' ? $contentText : null,
+                'word_count' => $wordCount,
+                'read_time_minutes' => $this->content->readTimeMinutes($wordCount),
+                'status' => LetterStatus::DRAFT,
+                'exported_at' => null,
+            ])->save();
+
+            $export->forceFill([
+                'pages' => $normalizedPages,
+                'page_count' => count($normalizedPages),
+                'source_hash' => $letter->sourceHash(),
+            ])->save();
+        });
+
+        return $this->find($letter, $export);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $pages
+     * @param  array<string, string>|null  $signature
+     * @param  array<string, mixed>|null  $truncatedPage
+     * @return array<int, array<string, mixed>>
+     */
+    private function normalizePages(array $pages, ?array $signature, ?array $truncatedPage = null): array
+    {
         $lastIndex = array_key_last($pages);
 
-        $normalizedPages = array_map(
+        return array_map(
             function (array $page, int $index) use ($lastIndex, $signature, $truncatedPage): array {
                 $isCover = $index === 0;
                 $isFinal = $index === $lastIndex;
@@ -95,12 +162,16 @@ class LetterExportService
             $pages,
             array_keys($pages),
         );
+    }
 
-        $export->forceFill([
-            'pages' => $normalizedPages,
-            'page_count' => count($normalizedPages),
-        ])->save();
+    /** @return array{name: string, handle: string} */
+    private function signature(Letter $letter): array
+    {
+        $user = $letter->user;
 
-        return $this->find($letter, $export);
+        return [
+            'name' => trim($user->first_name.' '.$user->last_name),
+            'handle' => '@'.$user->username,
+        ];
     }
 }

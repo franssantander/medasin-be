@@ -8,6 +8,7 @@ use App\Http\Requests\Letter\ListLetterExportRequest;
 use App\Http\Requests\Letter\StoreLetterExportRequest;
 use App\Http\Requests\Letter\UpdateLetterExportRequest;
 use App\Http\Resources\Letter\LetterExportResource;
+use App\Http\Resources\Letter\LetterResource;
 use App\Models\Letter;
 use App\Models\LetterExport;
 use App\Services\Letter\LetterExportService;
@@ -35,12 +36,13 @@ class LetterExportController extends Controller
     {
         $letter = $this->letterService->find($request->user(), $letter);
         $format = LetterExportFormat::from($request->validated('format', LetterExportFormat::PORTRAIT->value));
-        $export = $this->exportService->create($letter, $format);
+        $pages = $request->validated('pages');
+        $export = $this->exportService->create($letter, $format, $pages);
 
         return $this->success(
             LetterExportResource::make($export)->resolve($request),
-            'Letter export queued.',
-            202,
+            $pages === null ? 'Letter export queued.' : 'Letter pages prepared.',
+            $pages === null ? 202 : 201,
         );
     }
 
@@ -60,9 +62,13 @@ class LetterExportController extends Controller
             $letterExport,
             $request->validated('pages'),
         );
+        $letter = $this->letterService->find($request->user(), $letter);
 
         return $this->success(
-            LetterExportResource::make($letterExport)->resolve($request),
+            [
+                'export' => LetterExportResource::make($letterExport)->resolve($request),
+                'letter' => LetterResource::make($letter)->withContent()->resolve($request),
+            ],
             'Letter pages saved.',
         );
     }

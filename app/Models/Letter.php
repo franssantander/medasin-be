@@ -54,6 +54,11 @@ class Letter extends Model
         return $this->hasMany(LetterExport::class);
     }
 
+    public function media(): HasMany
+    {
+        return $this->hasMany(LetterMedia::class);
+    }
+
     public function letterExports(): HasMany
     {
         return $this->exports();

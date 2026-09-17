@@ -10,6 +10,7 @@ use App\Models\Goal;
 use App\Models\Habit;
 use App\Models\JournalEntry;
 use App\Models\Letter;
+use App\Models\LetterMedia;
 use App\Models\Note;
 use App\Models\NoteMedia;
 use App\Models\Project;
@@ -154,6 +155,11 @@ class TrashService
                 $this->purgeBoard($entry, $subject);
             } elseif ($subject instanceof Note) {
                 $this->purgeNotes($entry, $entry->metadata['note_ids'] ?? [$subject->getKey()]);
+            } elseif ($subject instanceof Letter) {
+                Storage::disk('public')->delete(
+                    LetterMedia::query()->where('letter_id', $subject->getKey())->pluck('path')->all(),
+                );
+                $subject->forceDelete();
             } elseif ($subject instanceof ResourceAttachment) {
                 if ($subject->path) {
                     Storage::disk('local')->delete($subject->path);

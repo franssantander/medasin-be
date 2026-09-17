@@ -6,8 +6,11 @@ use App\Data\Letter\LetterData;
 use App\Enum\LetterStatus;
 use App\Models\Letter;
 use App\Models\User;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class LetterService
 {
@@ -109,6 +112,26 @@ class LetterService
 
             return $this->load($letter);
         });
+    }
+
+    public function storeMedia(Letter $letter, UploadedFile $file): array
+    {
+        $path = $file->store("letters/{$letter->user->uuid}/{$letter->uuid}", 'public');
+        $media = $letter->media()->create([
+            'path' => $path,
+            'original_name' => Str::limit($file->getClientOriginalName(), 250, ''),
+            'mime_type' => $file->getMimeType() ?: $file->getClientMimeType(),
+            'size' => $file->getSize(),
+        ]);
+
+        return [
+            'uuid' => $media->uuid,
+            'url' => url(Storage::disk('public')->url($media->path)),
+            'kind' => 'image',
+            'mime_type' => $media->mime_type,
+            'name' => $media->original_name,
+            'size' => $media->size,
+        ];
     }
 
     private function load(Letter $letter): Letter

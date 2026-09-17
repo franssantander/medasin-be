@@ -25,11 +25,11 @@ class UpdateLetterExportRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'pages' => ['required', 'array', 'list', 'between:2,10'],
+            'pages' => ['required', 'array', 'list', 'min:2'],
             'pages.*' => ['required', 'array:uuid,layout,text_scale,text_scale_mode,title,subtitle,blocks'],
             'pages.*.uuid' => ['required', 'uuid', 'distinct'],
             'pages.*.layout' => ['required', Rule::in(['cover', 'body', 'quote'])],
-            'pages.*.text_scale' => ['sometimes', 'numeric', 'between:0.7,1.4'],
+            'pages.*.text_scale' => ['sometimes', 'numeric', 'between:0.1,1.4'],
             'pages.*.text_scale_mode' => ['sometimes', Rule::in(['auto', 'manual'])],
             'pages.*.title' => ['nullable', 'string', 'max:120'],
             'pages.*.subtitle' => ['nullable', 'string', 'max:240'],
