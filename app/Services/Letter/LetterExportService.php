@@ -10,6 +10,7 @@ use App\Models\Letter;
 use App\Models\LetterExport;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class LetterExportService
@@ -29,7 +30,12 @@ class LetterExportService
         $export = DB::transaction(function () use ($letter, $format, $profile, $pages): LetterExport {
             $preparedPages = $pages === null
                 ? null
-                : $this->normalizePages($pages, $this->signature($letter));
+                : $this->normalizePages(
+                    $pages,
+                    $this->signature($letter),
+                    null,
+                    $this->defaultCover($letter),
+                );
             $export = $letter->exports()->create([
                 'format' => $format,
                 'canvas_width' => $profile['width'],
@@ -89,13 +95,20 @@ class LetterExportService
         $existingPages = $export->pages ?? [];
         $signature = collect($existingPages)->firstWhere('signature', '!=', null)['signature'] ?? null;
         $truncatedPage = collect($existingPages)->firstWhere('truncated', true);
-        $normalizedPages = $this->normalizePages($pages, $signature, $truncatedPage);
+        $defaultCover = array_replace(
+            $this->defaultCover($letter),
+            $existingPages[0]['cover'] ?? [],
+        );
+        $normalizedPages = $this->normalizePages($pages, $signature, $truncatedPage, $defaultCover);
 
         DB::transaction(function () use ($letter, $export, $normalizedPages): void {
             $cover = $normalizedPages[0];
             $title = trim((string) ($cover['title'] ?? ''));
-            $subtitle = trim((string) ($cover['subtitle'] ?? ''));
+            $subtitle = trim($this->content->textForBlocks(
+                $cover['cover']['description_blocks'] ?? [],
+            ));
             $blocks = collect(array_slice($normalizedPages, 1))
+                ->reject(fn (array $page): bool => ($page['content_source'] ?? 'letter_body') === 'cover_entry')
                 ->flatMap(fn (array $page): array => $page['blocks'])
                 ->values()
                 ->all();
@@ -108,7 +121,7 @@ class LetterExportService
 
             $letter->forceFill([
                 'title' => $title !== '' ? $title : 'Untitled letter',
-                'subtitle' => $subtitle !== '' ? $subtitle : null,
+                'subtitle' => $subtitle !== '' ? Str::limit($subtitle, 240, '') : null,
                 'content' => $content,
                 'content_text' => $contentText !== '' ? $contentText : null,
                 'word_count' => $wordCount,
@@ -131,16 +144,24 @@ class LetterExportService
      * @param  array<int, array<string, mixed>>  $pages
      * @param  array<string, string>|null  $signature
      * @param  array<string, mixed>|null  $truncatedPage
+     * @param  array<string, mixed>  $defaultCover
      * @return array<int, array<string, mixed>>
      */
-    private function normalizePages(array $pages, ?array $signature, ?array $truncatedPage = null): array
-    {
+    private function normalizePages(
+        array $pages,
+        ?array $signature,
+        ?array $truncatedPage,
+        array $defaultCover,
+    ): array {
         $lastIndex = array_key_last($pages);
 
         return array_map(
-            function (array $page, int $index) use ($lastIndex, $signature, $truncatedPage): array {
+            function (array $page, int $index) use ($lastIndex, $signature, $truncatedPage, $defaultCover): array {
                 $isCover = $index === 0;
                 $isFinal = $index === $lastIndex;
+                $normalizedCover = $isCover
+                    ? $this->normalizeCover($page['cover'] ?? $defaultCover, $defaultCover)
+                    : null;
 
                 return [
                     'uuid' => $page['uuid'],
@@ -150,18 +171,79 @@ class LetterExportService
                     'text_scale' => (float) ($page['text_scale'] ?? 1),
                     'text_scale_mode' => $page['text_scale_mode'] ?? 'auto',
                     'title' => $isCover ? ($page['title'] ?? null) : null,
-                    'subtitle' => $isCover ? ($page['subtitle'] ?? null) : null,
-                    'blocks' => $isCover ? [] : array_values($page['blocks']),
+                    'subtitle' => $isCover
+                        ? (Str::limit($this->content->textForBlocks($normalizedCover['description_blocks']), 240, '') ?: null)
+                        : null,
+                    'content_source' => $page['content_source'] ?? ($isCover ? null : 'letter_body'),
+                    'cover' => $normalizedCover,
+                    'blocks' => array_values($page['blocks']),
                     'signature' => $isFinal ? $signature : null,
                     'truncated' => $isFinal && $truncatedPage !== null,
-                    'continuation_label' => $isFinal
-                        ? ($truncatedPage['continuation_label'] ?? null)
-                        : null,
+                    'continuation_label' => ($page['content_source'] ?? null) === 'cover_entry'
+                        ? ($page['continuation_label'] ?? 'Cover entry · Continued')
+                        : ($isFinal ? ($truncatedPage['continuation_label'] ?? null) : null),
                 ];
             },
             $pages,
             array_keys($pages),
         );
+    }
+
+    /**
+     * @param  array<string, mixed>  $cover
+     * @param  array<string, mixed>  $fallback
+     * @return array<string, mixed>
+     */
+    private function normalizeCover(array $cover, array $fallback): array
+    {
+        return [
+            'theme' => $cover['theme'] ?? $fallback['theme'],
+            'show_logo' => (bool) ($cover['show_logo'] ?? $fallback['show_logo']),
+            'subheader' => (string) ($cover['subheader'] ?? $fallback['subheader']),
+            'description_blocks' => array_values(
+                $cover['description_blocks'] ?? $fallback['description_blocks'],
+            ),
+            'author_name' => (string) ($cover['author_name'] ?? $fallback['author_name']),
+            'date_label' => (string) ($cover['date_label'] ?? $fallback['date_label']),
+            'avatar_url' => $cover['avatar_url'] ?? $fallback['avatar_url'],
+            'hero_image_url' => $cover['hero_image_url'] ?? $fallback['hero_image_url'],
+            'section_order' => $this->normalizeCoverSectionOrder(
+                $cover['section_order'] ?? $fallback['section_order'],
+            ),
+        ];
+    }
+
+    /** @param  array<int, mixed>  $sections */
+    private function normalizeCoverSectionOrder(array $sections): array
+    {
+        $normalized = collect($sections)
+            ->flatMap(fn (mixed $section): array => $section === 'content'
+                ? ['title', 'entry']
+                : (in_array($section, ['header', 'title', 'entry', 'author', 'hero'], true) ? [$section] : []))
+            ->merge(['header', 'title', 'entry', 'author', 'hero'])
+            ->unique()
+            ->values();
+
+        return $normalized->take(5)->all();
+    }
+
+    /** @return array<string, mixed> */
+    private function defaultCover(Letter $letter): array
+    {
+        return [
+            'theme' => 'light',
+            'show_logo' => true,
+            'subheader' => 'A LETTER',
+            'description_blocks' => [[
+                'type' => 'paragraph',
+                'content' => (string) ($letter->subtitle ?? ''),
+            ]],
+            'author_name' => trim($letter->user->first_name.' '.$letter->user->last_name),
+            'date_label' => $letter->created_at?->format('F j \\a\\t g:i A') ?? '',
+            'avatar_url' => null,
+            'hero_image_url' => null,
+            'section_order' => ['header', 'title', 'entry', 'author', 'hero'],
+        ];
     }
 
     /** @return array{name: string, handle: string} */

@@ -247,6 +247,7 @@ class LetterModuleTest extends TestCase
         $letter = Letter::factory()->for($user)->create();
         Queue::fake();
         Passport::actingAs($user);
+        $coverDescription = trim(str_repeat('Long cover copy. ', 70));
 
         $response = $this->postJson(route('letters.exports.store', $letter->uuid), [
             'format' => LetterExportFormat::PORTRAIT->value,
@@ -258,6 +259,20 @@ class LetterModuleTest extends TestCase
                     'text_scale_mode' => 'auto',
                     'title' => 'Measured cover',
                     'subtitle' => null,
+                    'cover' => [
+                        'theme' => 'light',
+                        'show_logo' => true,
+                        'subheader' => 'A LETTER',
+                        'description_blocks' => [[
+                            'type' => 'paragraph',
+                            'content' => $coverDescription,
+                        ]],
+                        'author_name' => 'Mina Reyes',
+                        'date_label' => '',
+                        'avatar_url' => null,
+                        'hero_image_url' => null,
+                        'section_order' => ['header', 'content', 'author', 'hero'],
+                    ],
                     'blocks' => [],
                 ],
                 [
@@ -275,6 +290,10 @@ class LetterModuleTest extends TestCase
             ->assertJsonPath('data.status', 'ready')
             ->assertJsonPath('data.page_count', 2)
             ->assertJsonPath('data.pages.0.title', 'Measured cover')
+            ->assertJsonPath('data.pages.0.subtitle', substr($coverDescription, 0, 240))
+            ->assertJsonPath('data.pages.0.cover.description_blocks.0.content', $coverDescription)
+            ->assertJsonPath('data.pages.0.cover.section_order.1', 'title')
+            ->assertJsonPath('data.pages.0.cover.section_order.2', 'entry')
             ->assertJsonPath('data.pages.1.kind', 'final')
             ->assertJsonPath('data.pages.1.signature.handle', '@minareads');
 
@@ -415,7 +434,36 @@ class LetterModuleTest extends TestCase
                     'text_scale_mode' => 'manual',
                     'title' => 'A custom cover',
                     'subtitle' => 'Prepared for sharing',
+                    'content_source' => 'cover_entry',
+                    'cover' => [
+                        'theme' => 'dark',
+                        'show_logo' => false,
+                        'subheader' => 'CIPER DATASETS',
+                        'description_blocks' => [[
+                            'type' => 'paragraph',
+                            'content' => [[
+                                'type' => 'text',
+                                'text' => 'Prepared for sharing',
+                                'styles' => ['bold' => true],
+                            ]],
+                        ]],
+                        'author_name' => 'Ciper',
+                        'date_label' => 'September 10 at 10:35 PM',
+                        'avatar_url' => 'http://localhost/storage/avatar.png',
+                        'hero_image_url' => 'http://localhost/storage/cover.png',
+                        'section_order' => ['content', 'author', 'hero', 'header'],
+                    ],
                     'blocks' => [],
+                ],
+                [
+                    'uuid' => '44444444-4444-4444-8444-444444444444',
+                    'layout' => 'body',
+                    'text_scale' => 1,
+                    'text_scale_mode' => 'auto',
+                    'title' => null,
+                    'subtitle' => null,
+                    'content_source' => 'cover_entry',
+                    'blocks' => [['type' => 'paragraph', 'content' => 'Generated entry projection.']],
                 ],
                 [
                     'uuid' => '33333333-3333-4333-8333-333333333333',
@@ -438,24 +486,33 @@ class LetterModuleTest extends TestCase
             ],
         ])
             ->assertOk()
-            ->assertJsonPath('data.export.page_count', 3)
+            ->assertJsonPath('data.export.page_count', 4)
             ->assertJsonPath('data.export.pages.0.title', 'A custom cover')
             ->assertJsonPath('data.export.pages.0.text_scale', 1.15)
             ->assertJsonPath('data.export.pages.0.text_scale_mode', 'manual')
-            ->assertJsonPath('data.export.pages.1.kind', 'body')
-            ->assertJsonPath('data.export.pages.1.layout', 'quote')
-            ->assertJsonPath('data.export.pages.1.text_scale', 0.85)
-            ->assertJsonPath('data.export.pages.1.text_scale_mode', 'manual')
-            ->assertJsonPath('data.export.pages.2.kind', 'final')
-            ->assertJsonPath('data.export.pages.2.signature.handle', '@minareads')
+            ->assertJsonPath('data.export.pages.0.cover.theme', 'dark')
+            ->assertJsonPath('data.export.pages.0.cover.show_logo', false)
+            ->assertJsonPath('data.export.pages.0.cover.description_blocks.0.content.0.styles.bold', true)
+            ->assertJsonPath('data.export.pages.0.cover.author_name', 'Ciper')
+            ->assertJsonPath('data.export.pages.0.cover.section_order.0', 'title')
+            ->assertJsonPath('data.export.pages.0.cover.section_order.1', 'entry')
+            ->assertJsonPath('data.export.pages.1.content_source', 'cover_entry')
+            ->assertJsonPath('data.export.pages.1.continuation_label', 'Cover entry · Continued')
+            ->assertJsonPath('data.export.pages.2.kind', 'body')
+            ->assertJsonPath('data.export.pages.2.layout', 'quote')
+            ->assertJsonPath('data.export.pages.2.text_scale', 0.85)
+            ->assertJsonPath('data.export.pages.2.text_scale_mode', 'manual')
+            ->assertJsonPath('data.export.pages.3.kind', 'final')
+            ->assertJsonPath('data.export.pages.3.signature.handle', '@minareads')
             ->assertJsonPath('data.export.is_current', true)
             ->assertJsonPath('data.letter.title', 'A custom cover')
             ->assertJsonPath('data.letter.subtitle', 'Prepared for sharing');
 
         $export->refresh();
-        $this->assertSame(3, $export->page_count);
-        $this->assertSame(1.3, $export->pages[2]['text_scale']);
-        $this->assertSame('Keep only this thought.', $export->pages[1]['blocks'][0]['content']);
+        $this->assertSame(4, $export->page_count);
+        $this->assertSame(1.3, $export->pages[3]['text_scale']);
+        $this->assertSame('http://localhost/storage/cover.png', $export->pages[0]['cover']['hero_image_url']);
+        $this->assertSame('Keep only this thought.', $export->pages[2]['blocks'][0]['content']);
         $letter->refresh();
         $this->assertSame('A custom cover', $letter->title);
         $this->assertSame('Prepared for sharing', $letter->subtitle);
@@ -489,6 +546,41 @@ class LetterModuleTest extends TestCase
                 ['uuid' => '22222222-2222-4222-8222-222222222222', 'layout' => 'body', 'title' => null, 'subtitle' => null, 'blocks' => []],
             ],
         ])->assertConflict();
+
+        $this->patchJson(route('letters.exports.update', [$letter->uuid, $export->uuid]), [
+            'pages' => [
+                [
+                    'uuid' => '11111111-1111-4111-8111-111111111111',
+                    'layout' => 'cover',
+                    'title' => 'Invalid cover',
+                    'subtitle' => null,
+                    'cover' => [
+                        'theme' => 'blue',
+                        'show_logo' => true,
+                        'subheader' => 'A LETTER',
+                        'description_blocks' => [],
+                        'author_name' => '',
+                        'date_label' => '',
+                        'avatar_url' => null,
+                        'hero_image_url' => null,
+                        'section_order' => ['header', 'header', 'author', 'hero'],
+                    ],
+                    'blocks' => [],
+                ],
+                [
+                    'uuid' => '22222222-2222-4222-8222-222222222222',
+                    'layout' => 'body',
+                    'title' => null,
+                    'subtitle' => null,
+                    'blocks' => [],
+                ],
+            ],
+        ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors([
+                'pages.0.cover.theme',
+                'pages.0.cover.section_order.1',
+            ]);
 
         $this->assertNull($export->fresh()->pages);
     }
@@ -680,7 +772,7 @@ class LetterModuleTest extends TestCase
         ])->assertUnprocessable()->assertJsonValidationErrors('file');
 
         $this->postJson(route('letters.media.store', $letter->uuid), [
-            'file' => UploadedFile::fake()->create('large.jpg', 10 * 1024 + 1, 'image/jpeg'),
+            'file' => UploadedFile::fake()->create('large.jpg', 8 * 1024 + 1, 'image/jpeg'),
         ])->assertUnprocessable()->assertJsonValidationErrors('file');
     }
 

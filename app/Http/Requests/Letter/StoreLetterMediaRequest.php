@@ -18,7 +18,7 @@ class StoreLetterMediaRequest extends FormRequest
             'file' => [
                 'required',
                 File::types(['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif'])
-                    ->max('10mb'),
+                    ->max('8mb'),
             ],
         ];
     }

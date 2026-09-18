@@ -30,13 +30,26 @@ class StoreLetterExportRequest extends FormRequest
                 Rule::in(array_column(LetterExportFormat::cases(), 'value')),
             ],
             'pages' => ['sometimes', 'array', 'list', 'min:2'],
-            'pages.*' => ['required', 'array:uuid,layout,text_scale,text_scale_mode,title,subtitle,blocks'],
+            'pages.*' => ['required', 'array:uuid,layout,text_scale,text_scale_mode,title,subtitle,cover,content_source,blocks'],
             'pages.*.uuid' => ['required_with:pages', 'uuid', 'distinct'],
             'pages.*.layout' => ['required_with:pages', Rule::in(['cover', 'body', 'quote'])],
             'pages.*.text_scale' => ['sometimes', 'numeric', 'between:0.1,1.4'],
             'pages.*.text_scale_mode' => ['sometimes', Rule::in(['auto', 'manual'])],
             'pages.*.title' => ['nullable', 'string', 'max:120'],
             'pages.*.subtitle' => ['nullable', 'string', 'max:240'],
+            'pages.*.content_source' => ['sometimes', 'nullable', Rule::in(['cover_entry', 'letter_body'])],
+            'pages.*.cover' => ['nullable', 'array:theme,show_logo,subheader,description_blocks,author_name,date_label,avatar_url,hero_image_url,section_order'],
+            'pages.*.cover.theme' => ['required_with:pages.*.cover', Rule::in(['light', 'dark'])],
+            'pages.*.cover.show_logo' => ['required_with:pages.*.cover', 'boolean'],
+            'pages.*.cover.subheader' => ['present_with:pages.*.cover', 'nullable', 'string', 'max:80'],
+            'pages.*.cover.description_blocks' => ['required_with:pages.*.cover', 'array', 'list'],
+            'pages.*.cover.description_blocks.*' => ['array'],
+            'pages.*.cover.author_name' => ['present_with:pages.*.cover', 'nullable', 'string', 'max:120'],
+            'pages.*.cover.date_label' => ['present_with:pages.*.cover', 'nullable', 'string', 'max:80'],
+            'pages.*.cover.avatar_url' => ['present_with:pages.*.cover', 'nullable', 'string', 'max:2048'],
+            'pages.*.cover.hero_image_url' => ['present_with:pages.*.cover', 'nullable', 'string', 'max:2048'],
+            'pages.*.cover.section_order' => ['required_with:pages.*.cover', 'array', 'list', 'between:4,5'],
+            'pages.*.cover.section_order.*' => ['required', 'string', 'distinct', Rule::in(['header', 'content', 'title', 'entry', 'author', 'hero'])],
             'pages.*.blocks' => ['present_with:pages', 'array'],
             'pages.*.blocks.*' => ['array'],
         ];
@@ -60,7 +73,23 @@ class StoreLetterExportRequest extends FormRequest
                         $validator->errors()->add('pages.'.($index + 1).'.layout', 'Only the first page may be the cover.');
                     }
                 }
+
+                $descriptionBlocks = $pages[0]['cover']['description_blocks'] ?? [];
+                foreach (is_array($descriptionBlocks) ? $descriptionBlocks : [] as $index => $block) {
+                    if (! is_array($block) || ! in_array($block['type'] ?? null, $this->descriptionBlockTypes(), true)) {
+                        $validator->errors()->add(
+                            "pages.0.cover.description_blocks.{$index}.type",
+                            'The cover entry may only contain text blocks.',
+                        );
+                    }
+                }
             },
         ];
+    }
+
+    /** @return array<int, string> */
+    private function descriptionBlockTypes(): array
+    {
+        return ['paragraph', 'heading', 'bulletListItem', 'numberedListItem', 'checkListItem', 'quote'];
     }
 }
