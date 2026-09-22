@@ -383,6 +383,8 @@ class LetterModuleTest extends TestCase
         $this->assertSame('Mina Reyes', $export->pages[1]['signature']['name']);
         $this->assertSame('@minareads', $export->pages[1]['signature']['handle']);
         $this->assertSame('A public note', $export->pages[0]['title']);
+        $this->assertNull($export->pages[0]['cover']['hero_image_aspect_ratio']);
+        $this->assertSame('author', $export->pages[0]['cover']['section_order'][4]);
     }
 
     public function test_ready_export_pages_can_be_customized_and_are_normalized(): void
@@ -438,6 +440,7 @@ class LetterModuleTest extends TestCase
                     'cover' => [
                         'theme' => 'dark',
                         'show_logo' => false,
+                        'text_alignment' => 'right',
                         'subheader' => 'CIPER DATASETS',
                         'description_blocks' => [[
                             'type' => 'paragraph',
@@ -451,6 +454,7 @@ class LetterModuleTest extends TestCase
                         'date_label' => 'September 10 at 10:35 PM',
                         'avatar_url' => 'http://localhost/storage/avatar.png',
                         'hero_image_url' => 'http://localhost/storage/cover.png',
+                        'hero_image_aspect_ratio' => 1.25,
                         'section_order' => ['content', 'author', 'hero', 'header'],
                     ],
                     'blocks' => [],
@@ -492,10 +496,13 @@ class LetterModuleTest extends TestCase
             ->assertJsonPath('data.export.pages.0.text_scale_mode', 'manual')
             ->assertJsonPath('data.export.pages.0.cover.theme', 'dark')
             ->assertJsonPath('data.export.pages.0.cover.show_logo', false)
+            ->assertJsonPath('data.export.pages.0.cover.text_alignment', 'right')
             ->assertJsonPath('data.export.pages.0.cover.description_blocks.0.content.0.styles.bold', true)
             ->assertJsonPath('data.export.pages.0.cover.author_name', 'Ciper')
+            ->assertJsonPath('data.export.pages.0.cover.hero_image_aspect_ratio', 1.25)
             ->assertJsonPath('data.export.pages.0.cover.section_order.0', 'title')
             ->assertJsonPath('data.export.pages.0.cover.section_order.1', 'entry')
+            ->assertJsonPath('data.export.pages.0.cover.section_order.4', 'author')
             ->assertJsonPath('data.export.pages.1.content_source', 'cover_entry')
             ->assertJsonPath('data.export.pages.1.continuation_label', 'Cover entry · Continued')
             ->assertJsonPath('data.export.pages.2.kind', 'body')
@@ -511,6 +518,7 @@ class LetterModuleTest extends TestCase
         $export->refresh();
         $this->assertSame(4, $export->page_count);
         $this->assertSame(1.3, $export->pages[3]['text_scale']);
+        $this->assertSame('right', $export->pages[0]['cover']['text_alignment']);
         $this->assertSame('http://localhost/storage/cover.png', $export->pages[0]['cover']['hero_image_url']);
         $this->assertSame('Keep only this thought.', $export->pages[2]['blocks'][0]['content']);
         $letter->refresh();
@@ -521,6 +529,114 @@ class LetterModuleTest extends TestCase
             ['type' => 'paragraph', 'content' => 'Closing copy.'],
         ], json_decode($letter->content, true, 512, JSON_THROW_ON_ERROR)['blocks']);
         $this->assertSame($letter->sourceHash(), $export->source_hash);
+    }
+
+    public function test_cover_image_can_be_removed_from_a_ready_export(): void
+    {
+        $user = User::factory()->create();
+        $letter = Letter::factory()->for($user)->create();
+        $export = LetterExport::factory()->for($letter)->create([
+            'status' => LetterExportStatus::READY,
+            'pages' => [
+                [
+                    'uuid' => '11111111-1111-4111-8111-111111111111',
+                    'number' => 1,
+                    'kind' => 'cover',
+                    'layout' => 'cover',
+                    'text_scale' => 1.0,
+                    'text_scale_mode' => 'auto',
+                    'title' => 'Cover with image',
+                    'subtitle' => null,
+                    'content_source' => 'cover_entry',
+                    'cover' => [
+                        'theme' => 'light',
+                        'show_logo' => true,
+                        'text_alignment' => 'center',
+                        'subheader' => 'A LETTER',
+                        'description_blocks' => [[
+                            'type' => 'paragraph',
+                            'content' => '',
+                        ]],
+                        'author_name' => '',
+                        'date_label' => '',
+                        'avatar_url' => null,
+                        'hero_image_url' => 'http://localhost/storage/cover.png',
+                        'hero_image_aspect_ratio' => 1.25,
+                        'section_order' => ['header', 'title', 'entry', 'author', 'hero'],
+                    ],
+                    'blocks' => [],
+                    'signature' => null,
+                    'truncated' => false,
+                    'continuation_label' => null,
+                ],
+                [
+                    'uuid' => '22222222-2222-4222-8222-222222222222',
+                    'number' => 2,
+                    'kind' => 'final',
+                    'layout' => 'body',
+                    'text_scale' => 1.0,
+                    'text_scale_mode' => 'auto',
+                    'title' => null,
+                    'subtitle' => null,
+                    'content_source' => 'letter_body',
+                    'blocks' => [],
+                    'signature' => null,
+                    'truncated' => false,
+                    'continuation_label' => null,
+                ],
+            ],
+            'page_count' => 2,
+        ]);
+        Passport::actingAs($user);
+
+        $response = $this->patchJson(route('letters.exports.update', [$letter->uuid, $export->uuid]), [
+            'pages' => [
+                [
+                    'uuid' => '11111111-1111-4111-8111-111111111111',
+                    'layout' => 'cover',
+                    'text_scale' => 1.0,
+                    'text_scale_mode' => 'auto',
+                    'title' => 'Cover with image',
+                    'subtitle' => null,
+                    'content_source' => 'cover_entry',
+                    'cover' => [
+                        'theme' => 'light',
+                        'show_logo' => true,
+                        'text_alignment' => 'left',
+                        'subheader' => 'A LETTER',
+                        'description_blocks' => [[
+                            'type' => 'paragraph',
+                            'content' => '',
+                        ]],
+                        'author_name' => '',
+                        'date_label' => '',
+                        'avatar_url' => null,
+                        'hero_image_url' => null,
+                        'hero_image_aspect_ratio' => null,
+                        'section_order' => ['header', 'title', 'entry', 'author', 'hero'],
+                    ],
+                    'blocks' => [],
+                ],
+                [
+                    'uuid' => '22222222-2222-4222-8222-222222222222',
+                    'layout' => 'body',
+                    'text_scale' => 1.0,
+                    'text_scale_mode' => 'auto',
+                    'title' => null,
+                    'subtitle' => null,
+                    'content_source' => 'letter_body',
+                    'blocks' => [],
+                ],
+            ],
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.export.pages.0.cover.hero_image_url', null)
+            ->assertJsonPath('data.export.pages.0.cover.hero_image_aspect_ratio', null)
+            ->assertJsonPath('data.export.pages.0.cover.text_alignment', 'left');
+
+        $this->assertNull($export->fresh()->pages[0]['cover']['hero_image_url']);
+        $this->assertNull($export->fresh()->pages[0]['cover']['hero_image_aspect_ratio']);
+        $this->assertSame('left', $export->fresh()->pages[0]['cover']['text_alignment']);
     }
 
     public function test_export_page_customization_validates_cover_and_ready_status(): void
@@ -557,12 +673,14 @@ class LetterModuleTest extends TestCase
                     'cover' => [
                         'theme' => 'blue',
                         'show_logo' => true,
+                        'text_alignment' => 'justify',
                         'subheader' => 'A LETTER',
                         'description_blocks' => [],
                         'author_name' => '',
                         'date_label' => '',
                         'avatar_url' => null,
                         'hero_image_url' => null,
+                        'hero_image_aspect_ratio' => 0,
                         'section_order' => ['header', 'header', 'author', 'hero'],
                     ],
                     'blocks' => [],
@@ -579,6 +697,8 @@ class LetterModuleTest extends TestCase
             ->assertUnprocessable()
             ->assertJsonValidationErrors([
                 'pages.0.cover.theme',
+                'pages.0.cover.text_alignment',
+                'pages.0.cover.hero_image_aspect_ratio',
                 'pages.0.cover.section_order.1',
             ]);
 

@@ -196,17 +196,31 @@ class LetterExportService
      */
     private function normalizeCover(array $cover, array $fallback): array
     {
+        $heroImageUrl = array_key_exists('hero_image_url', $cover)
+            ? $cover['hero_image_url']
+            : $fallback['hero_image_url'];
+
         return [
             'theme' => $cover['theme'] ?? $fallback['theme'],
             'show_logo' => (bool) ($cover['show_logo'] ?? $fallback['show_logo']),
+            'text_alignment' => $cover['text_alignment'] ?? $fallback['text_alignment'],
             'subheader' => (string) ($cover['subheader'] ?? $fallback['subheader']),
             'description_blocks' => array_values(
                 $cover['description_blocks'] ?? $fallback['description_blocks'],
             ),
             'author_name' => (string) ($cover['author_name'] ?? $fallback['author_name']),
             'date_label' => (string) ($cover['date_label'] ?? $fallback['date_label']),
-            'avatar_url' => $cover['avatar_url'] ?? $fallback['avatar_url'],
-            'hero_image_url' => $cover['hero_image_url'] ?? $fallback['hero_image_url'],
+            'avatar_url' => array_key_exists('avatar_url', $cover)
+                ? $cover['avatar_url']
+                : $fallback['avatar_url'],
+            'hero_image_url' => $heroImageUrl,
+            'hero_image_aspect_ratio' => $heroImageUrl
+                ? $this->normalizeCoverHeroAspectRatio(
+                    $cover['hero_image_aspect_ratio']
+                        ?? $fallback['hero_image_aspect_ratio']
+                        ?? (16 / 9),
+                )
+                : null,
             'section_order' => $this->normalizeCoverSectionOrder(
                 $cover['section_order'] ?? $fallback['section_order'],
             ),
@@ -220,11 +234,21 @@ class LetterExportService
             ->flatMap(fn (mixed $section): array => $section === 'content'
                 ? ['title', 'entry']
                 : (in_array($section, ['header', 'title', 'entry', 'author', 'hero'], true) ? [$section] : []))
-            ->merge(['header', 'title', 'entry', 'author', 'hero'])
+            ->reject(fn (string $section): bool => $section === 'author')
+            ->merge(['header', 'title', 'entry', 'hero'])
             ->unique()
-            ->values();
+            ->values()
+            ->take(4)
+            ->push('author');
 
-        return $normalized->take(5)->all();
+        return $normalized->all();
+    }
+
+    private function normalizeCoverHeroAspectRatio(mixed $value): float
+    {
+        $ratio = is_numeric($value) ? (float) $value : (16 / 9);
+
+        return min(10, max(0.1, $ratio));
     }
 
     /** @return array<string, mixed> */
@@ -233,6 +257,7 @@ class LetterExportService
         return [
             'theme' => 'light',
             'show_logo' => true,
+            'text_alignment' => 'center',
             'subheader' => 'A LETTER',
             'description_blocks' => [[
                 'type' => 'paragraph',
@@ -242,7 +267,8 @@ class LetterExportService
             'date_label' => $letter->created_at?->format('F j \\a\\t g:i A') ?? '',
             'avatar_url' => null,
             'hero_image_url' => null,
-            'section_order' => ['header', 'title', 'entry', 'author', 'hero'],
+            'hero_image_aspect_ratio' => null,
+            'section_order' => ['header', 'title', 'entry', 'hero', 'author'],
         ];
     }
 

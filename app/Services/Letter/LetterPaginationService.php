@@ -60,6 +60,7 @@ class LetterPaginationService
             'cover' => [
                 'theme' => 'light',
                 'show_logo' => true,
+                'text_alignment' => 'center',
                 'subheader' => 'A LETTER',
                 'description_blocks' => [[
                     'type' => 'paragraph',
@@ -69,7 +70,8 @@ class LetterPaginationService
                 'date_label' => $letter->created_at?->format('F j \\a\\t g:i A') ?? '',
                 'avatar_url' => null,
                 'hero_image_url' => null,
-                'section_order' => ['header', 'title', 'entry', 'author', 'hero'],
+                'hero_image_aspect_ratio' => null,
+                'section_order' => ['header', 'title', 'entry', 'hero', 'author'],
             ],
             'blocks' => [],
             'signature' => null,
