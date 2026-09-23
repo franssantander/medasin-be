@@ -94,6 +94,13 @@ class LetterExportService
 
         $existingPages = $export->pages ?? [];
         $signature = collect($existingPages)->firstWhere('signature', '!=', null)['signature'] ?? null;
+        $lastPage = $pages[array_key_last($pages)];
+        if (array_key_exists('signature', $lastPage)) {
+            $signature = [
+                'name' => $lastPage['signature']['name'] ?? '',
+                'handle' => $lastPage['signature']['handle'] ?? '',
+            ];
+        }
         $truncatedPage = collect($existingPages)->firstWhere('truncated', true);
         $defaultCover = array_replace(
             $this->defaultCover($letter),

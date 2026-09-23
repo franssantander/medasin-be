@@ -26,7 +26,7 @@ class UpdateLetterExportRequest extends FormRequest
     {
         return [
             'pages' => ['required', 'array', 'list', 'min:2'],
-            'pages.*' => ['required', 'array:uuid,layout,text_scale,text_scale_mode,title,subtitle,cover,content_source,blocks'],
+            'pages.*' => ['required', 'array:uuid,layout,text_scale,text_scale_mode,title,subtitle,cover,content_source,blocks,signature'],
             'pages.*.uuid' => ['required', 'uuid', 'distinct'],
             'pages.*.layout' => ['required', Rule::in(['cover', 'body', 'quote'])],
             'pages.*.text_scale' => ['sometimes', 'numeric', 'between:0.1,1.4'],
@@ -34,6 +34,9 @@ class UpdateLetterExportRequest extends FormRequest
             'pages.*.title' => ['nullable', 'string', 'max:120'],
             'pages.*.subtitle' => ['nullable', 'string', 'max:240'],
             'pages.*.content_source' => ['sometimes', 'nullable', Rule::in(['cover_entry', 'letter_body'])],
+            'pages.*.signature' => ['sometimes', 'array:name,handle'],
+            'pages.*.signature.name' => ['present_with:pages.*.signature', 'nullable', 'string', 'max:120'],
+            'pages.*.signature.handle' => ['present_with:pages.*.signature', 'nullable', 'string', 'max:80'],
             'pages.*.cover' => ['nullable', 'array:theme,show_logo,text_alignment,subheader,description_blocks,author_name,date_label,avatar_url,hero_image_url,hero_image_aspect_ratio,section_order'],
             'pages.*.cover.theme' => ['required_with:pages.*.cover', Rule::in(['light', 'dark'])],
             'pages.*.cover.show_logo' => ['required_with:pages.*.cover', 'boolean'],
@@ -73,6 +76,11 @@ class UpdateLetterExportRequest extends FormRequest
                 foreach (array_slice($pages, 1) as $index => $page) {
                     if (is_array($page) && ($page['layout'] ?? null) === 'cover') {
                         $validator->errors()->add('pages.'.($index + 1).'.layout', 'Only the first page may be the cover.');
+                    }
+                }
+                foreach (array_slice($pages, 0, -1) as $index => $page) {
+                    if (is_array($page) && array_key_exists('signature', $page)) {
+                        $validator->errors()->add('pages.'.$index.'.signature', 'Only the last page may have author details.');
                     }
                 }
                 $descriptionBlocks = $pages[0]['cover']['description_blocks'] ?? [];

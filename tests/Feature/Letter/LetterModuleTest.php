@@ -531,6 +531,97 @@ class LetterModuleTest extends TestCase
         $this->assertSame($letter->sourceHash(), $export->source_hash);
     }
 
+    public function test_ready_export_saves_independent_last_page_author_details(): void
+    {
+        $user = User::factory()->create([
+            'first_name' => 'Mina',
+            'last_name' => 'Reyes',
+            'username' => 'minareads',
+        ]);
+        $letter = Letter::factory()->for($user)->create();
+        $export = LetterExport::factory()->for($letter)->create([
+            'status' => LetterExportStatus::READY,
+            'pages' => [
+                [
+                    'uuid' => '11111111-1111-4111-8111-111111111111',
+                    'layout' => 'cover',
+                    'title' => 'Independent cover',
+                    'blocks' => [],
+                    'signature' => null,
+                ],
+                [
+                    'uuid' => '22222222-2222-4222-8222-222222222222',
+                    'layout' => 'body',
+                    'blocks' => [],
+                    'signature' => ['name' => 'Mina Reyes', 'handle' => '@minareads'],
+                ],
+            ],
+            'page_count' => 2,
+        ]);
+        Passport::actingAs($user);
+        $pages = [
+            [
+                'uuid' => '11111111-1111-4111-8111-111111111111',
+                'layout' => 'cover',
+                'title' => 'Independent cover',
+                'blocks' => [],
+            ],
+            [
+                'uuid' => '22222222-2222-4222-8222-222222222222',
+                'layout' => 'body',
+                'blocks' => [],
+                'signature' => ['name' => 'Guest Writer', 'handle' => ''],
+            ],
+        ];
+
+        $this->patchJson(route('letters.exports.update', [$letter->uuid, $export->uuid]), ['pages' => $pages])
+            ->assertOk()
+            ->assertJsonPath('data.export.pages.0.cover.author_name', 'Mina Reyes')
+            ->assertJsonPath('data.export.pages.1.signature.name', 'Guest Writer')
+            ->assertJsonPath('data.export.pages.1.signature.handle', '');
+        $this->assertSame(['name' => 'Guest Writer', 'handle' => ''], $export->fresh()->pages[1]['signature']);
+
+        $pages[1]['signature'] = ['name' => '', 'handle' => 'guest.writer'];
+        $this->patchJson(route('letters.exports.update', [$letter->uuid, $export->uuid]), ['pages' => $pages])
+            ->assertOk()
+            ->assertJsonPath('data.export.pages.1.signature.name', '')
+            ->assertJsonPath('data.export.pages.1.signature.handle', 'guest.writer');
+
+        $pages[1]['signature'] = ['name' => '', 'handle' => ''];
+        $this->patchJson(route('letters.exports.update', [$letter->uuid, $export->uuid]), ['pages' => $pages])
+            ->assertOk()
+            ->assertJsonPath('data.export.pages.1.signature.name', '')
+            ->assertJsonPath('data.export.pages.1.signature.handle', '');
+        $this->assertSame(['name' => '', 'handle' => ''], $export->fresh()->pages[1]['signature']);
+
+        unset($pages[1]['signature']);
+        $this->patchJson(route('letters.exports.update', [$letter->uuid, $export->uuid]), ['pages' => $pages])
+            ->assertOk()
+            ->assertJsonPath('data.export.pages.1.signature.name', '')
+            ->assertJsonPath('data.export.pages.1.signature.handle', '');
+    }
+
+    public function test_only_the_last_page_accepts_author_details(): void
+    {
+        $user = User::factory()->create();
+        $letter = Letter::factory()->for($user)->create();
+        $export = LetterExport::factory()->for($letter)->create([
+            'status' => LetterExportStatus::READY,
+            'pages' => $this->measuredPages(2),
+            'page_count' => 2,
+        ]);
+        $originalPages = $export->fresh()->pages;
+        Passport::actingAs($user);
+        $pages = $this->measuredPages(2);
+        $pages[0]['signature'] = ['name' => 'Unexpected', 'handle' => 'writer'];
+
+        $this->patchJson(route('letters.exports.update', [$letter->uuid, $export->uuid]), ['pages' => $pages])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['pages.0.signature']);
+
+        $this->assertSame($originalPages, $export->fresh()->pages);
+    }
+
     public function test_cover_image_can_be_removed_from_a_ready_export(): void
     {
         $user = User::factory()->create();
