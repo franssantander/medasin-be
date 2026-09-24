@@ -6,6 +6,7 @@ use App\Models\Area;
 use App\Models\Board;
 use App\Models\BoardLabel;
 use App\Models\BoardTask;
+use App\Models\CalendarPlan;
 use App\Models\Goal;
 use App\Models\Habit;
 use App\Models\JournalEntry;
@@ -25,7 +26,7 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class TrashService
 {
-    public const TYPES = ['area', 'project', 'board', 'task', 'goal', 'habit', 'note', 'journal_entry', 'letter', 'board_label', 'resource_attachment'];
+    public const TYPES = ['area', 'project', 'board', 'task', 'goal', 'habit', 'note', 'journal_entry', 'letter', 'board_label', 'resource_attachment', 'calendar_plan'];
 
     public function delete(User $user, Model $subject, string $itemType, string $title, ?string $context = null): TrashEntry
     {
@@ -132,6 +133,9 @@ class TrashService
                     throw new ConflictHttpException('A label with this name already exists. Rename it before restoring this label.');
                 }
                 $subject->restore();
+                if ($subject instanceof CalendarPlan && $subject->remind_at?->lessThanOrEqualTo(now()) && ! $subject->notified_at) {
+                    $subject->forceFill(['remind_at' => null, 'reminder_token' => null])->save();
+                }
                 if ($subject instanceof BoardTask) {
                     $this->resequenceBoardTasks($subject->board()->firstOrFail());
                 }
@@ -220,7 +224,7 @@ class TrashService
     private function subject(TrashEntry $entry): Model
     {
         $class = $entry->subject_type;
-        $allowed = [Area::class, Project::class, Board::class, BoardTask::class, Goal::class, Habit::class, Note::class, JournalEntry::class, Letter::class, BoardLabel::class, ResourceAttachment::class];
+        $allowed = [Area::class, Project::class, Board::class, BoardTask::class, Goal::class, Habit::class, Note::class, JournalEntry::class, Letter::class, BoardLabel::class, ResourceAttachment::class, CalendarPlan::class];
         abort_unless(in_array($class, $allowed, true), 404);
 
         return $class::withTrashed()->findOrFail($entry->subject_id);

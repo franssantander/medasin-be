@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers\Board;
 
+use App\Data\Board\BoardLabelData;
 use App\Http\Controllers\Board\Concerns\InteractsWithStandaloneBoards;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Board\StoreBoardLabelRequest;
 use App\Http\Requests\Board\UpdateBoardLabelRequest;
-use App\Http\Resources\Board\BoardLabelResource;
 use App\Models\Board;
 use App\Models\BoardLabel;
 use App\Services\Trash\TrashService;
@@ -23,7 +23,7 @@ class StandaloneBoardLabelController extends Controller
         $board = $this->standaloneBoard($request->user(), $board);
         $label = $board->labels()->create($request->validated());
 
-        return $this->success(BoardLabelResource::make($label)->resolve($request), 'Successfully created board label.', 201);
+        return $this->success(BoardLabelData::fromModel($label)->toArray(), 'Successfully created board label.', 201);
     }
 
     public function update(UpdateBoardLabelRequest $request, Board $board, BoardLabel $label)
@@ -32,7 +32,7 @@ class StandaloneBoardLabelController extends Controller
         $label = $this->boardLabel($board, $label);
         $label->update($request->validated());
 
-        return $this->success(BoardLabelResource::make($label->fresh())->resolve($request), 'Successfully updated board label.');
+        return $this->success(BoardLabelData::fromModel($label->fresh())->toArray(), 'Successfully updated board label.');
     }
 
     public function destroy(Request $request, Board $board, BoardLabel $label)

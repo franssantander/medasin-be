@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers\Project;
 
+use App\Data\Board\BoardDetailData;
+use App\Data\Board\BoardSummaryData;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Project\Concerns\InteractsWithOwnedProjects;
 use App\Http\Requests\Board\StoreBoardRequest;
 use App\Http\Requests\Board\UpdateBoardRequest;
-use App\Http\Resources\Board\BoardResource;
-use App\Http\Resources\Board\BoardSummaryResource;
 use App\Models\Board;
 use App\Models\Project;
 use App\Services\Board\BoardService;
@@ -31,7 +31,7 @@ class ProjectBoardController extends Controller
             ->with(['stages' => fn ($query) => $query->withCount('tasks')])
             ->get();
 
-        return $this->success(BoardSummaryResource::collection($boards)->resolve($request));
+        return $this->success($boards->map(fn (Board $board): array => BoardSummaryData::fromModel($board)->toArray())->all());
     }
 
     public function store(StoreBoardRequest $request, Project $project)
@@ -40,7 +40,7 @@ class ProjectBoardController extends Controller
         $this->ensureProjectIsMutable($project);
         $board = $this->boardService->createForProject($request->user(), $project, $request->validated('name'));
 
-        return $this->success(BoardResource::make($board)->resolve($request), 'Successfully created board.', 201);
+        return $this->success(BoardDetailData::fromModel($board)->toArray(), 'Successfully created board.', 201);
     }
 
     public function show(Request $request, Project $project, Board $board)
@@ -48,7 +48,7 @@ class ProjectBoardController extends Controller
         $project = $this->ownedProject($request->user(), $project);
         $board = $this->ownedBoard($project, $board);
 
-        return $this->success(BoardResource::make($this->loadBoard($board))->resolve($request));
+        return $this->success(BoardDetailData::fromModel($this->loadBoard($board))->toArray());
     }
 
     public function update(UpdateBoardRequest $request, Project $project, Board $board)
@@ -58,7 +58,7 @@ class ProjectBoardController extends Controller
         $board = $this->ownedBoard($project, $board);
         $board->update($request->validated());
 
-        return $this->success(BoardResource::make($this->loadBoard($board))->resolve($request), 'Successfully updated board.');
+        return $this->success(BoardDetailData::fromModel($this->loadBoard($board))->toArray(), 'Successfully updated board.');
     }
 
     public function destroy(Request $request, Project $project, Board $board)

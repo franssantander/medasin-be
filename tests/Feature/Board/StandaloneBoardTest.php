@@ -21,8 +21,16 @@ class StandaloneBoardTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.name', 'Board 1')
+            ->assertJsonMissingPath('data.0.stages')
+            ->assertJsonMissingPath('data.0.labels')
             ->json('data.0.uuid');
         $board = Board::where('uuid', $uuid)->firstOrFail();
+
+        $this->getJson(route('board.show', $board))
+            ->assertOk()
+            ->assertJsonCount(4, 'data.stages')
+            ->assertJsonPath('data.stages.0.key', 'backlog')
+            ->assertJsonPath('data.labels', []);
 
         $this->getJson(route('board.index'))->assertOk()->assertJsonCount(1, 'data');
 

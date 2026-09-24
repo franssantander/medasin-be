@@ -97,4 +97,9 @@ class User extends Authenticatable
     {
         return $this->hasMany(Letter::class);
     }
+
+    public function calendarPlans(): HasMany
+    {
+        return $this->hasMany(CalendarPlan::class);
+    }
 }

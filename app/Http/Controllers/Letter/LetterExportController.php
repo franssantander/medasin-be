@@ -2,13 +2,13 @@
 
 namespace App\Http\Controllers\Letter;
 
+use App\Data\Letter\LetterExportData;
+use App\Data\Letter\LetterResponseData;
 use App\Enum\LetterExportFormat;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Letter\ListLetterExportRequest;
 use App\Http\Requests\Letter\StoreLetterExportRequest;
 use App\Http\Requests\Letter\UpdateLetterExportRequest;
-use App\Http\Resources\Letter\LetterExportResource;
-use App\Http\Resources\Letter\LetterResource;
 use App\Models\Letter;
 use App\Models\LetterExport;
 use App\Services\Letter\LetterExportService;
@@ -27,7 +27,7 @@ class LetterExportController extends Controller
     {
         $letter = $this->letterService->find($request->user(), $letter);
         $exports = $this->exportService->listing($letter, $request->validated('per_page', 15));
-        $exports->through(fn (LetterExport $export): array => LetterExportResource::make($export)->resolve($request));
+        $exports->through(fn (LetterExport $export): array => LetterExportData::fromModel($export)->toArray());
 
         return $this->success($exports);
     }
@@ -40,7 +40,7 @@ class LetterExportController extends Controller
         $export = $this->exportService->create($letter, $format, $pages);
 
         return $this->success(
-            LetterExportResource::make($export)->resolve($request),
+            LetterExportData::fromModel($export)->toArray(),
             $pages === null ? 'Letter export queued.' : 'Letter pages prepared.',
             $pages === null ? 202 : 201,
         );
@@ -51,7 +51,7 @@ class LetterExportController extends Controller
         $letter = $this->letterService->find($request->user(), $letter);
         $letterExport = $this->exportService->find($letter, $letterExport);
 
-        return $this->success(LetterExportResource::make($letterExport)->resolve($request));
+        return $this->success(LetterExportData::fromModel($letterExport)->toArray());
     }
 
     public function update(UpdateLetterExportRequest $request, Letter $letter, LetterExport $letterExport): JsonResponse
@@ -66,8 +66,8 @@ class LetterExportController extends Controller
 
         return $this->success(
             [
-                'export' => LetterExportResource::make($letterExport)->resolve($request),
-                'letter' => LetterResource::make($letter)->withContent()->resolve($request),
+                'export' => LetterExportData::fromModel($letterExport)->toArray(),
+                'letter' => LetterResponseData::fromModel($letter, includeContent: true)->toArray(),
             ],
             'Letter pages saved.',
         );

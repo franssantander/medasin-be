@@ -3,11 +3,11 @@
 namespace App\Http\Controllers\Journal;
 
 use App\Data\Journal\JournalEntryData;
+use App\Data\Journal\JournalEntryResponseData;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Journal\ListJournalEntryRequest;
 use App\Http\Requests\Journal\StoreJournalEntryRequest;
 use App\Http\Requests\Journal\UpdateJournalEntryRequest;
-use App\Http\Resources\Journal\JournalEntryResource;
 use App\Models\JournalEntry;
 use App\Services\Journal\JournalService;
 use App\Services\Trash\TrashService;
@@ -27,7 +27,7 @@ class JournalController extends Controller
             $request->user(),
             $request->validated('per_page', 15),
         );
-        $entries->through(fn (JournalEntry $entry): array => JournalEntryResource::make($entry)->resolve($request));
+        $entries->through(fn (JournalEntry $entry): array => JournalEntryResponseData::fromModel($entry)->toArray());
 
         return $this->success($entries);
     }
@@ -40,7 +40,7 @@ class JournalController extends Controller
         );
 
         return $this->success(
-            JournalEntryResource::make($entry)->withContent()->resolve($request),
+            JournalEntryResponseData::fromModel($entry, includeContent: true)->toArray(),
             'Successfully created journal entry.',
             201,
         );
@@ -51,7 +51,7 @@ class JournalController extends Controller
         $entry = $this->journalService->find($request->user(), $journalEntry);
 
         return $this->success(
-            JournalEntryResource::make($entry)->withContent()->resolve($request),
+            JournalEntryResponseData::fromModel($entry, includeContent: true)->toArray(),
         );
     }
 
@@ -65,7 +65,7 @@ class JournalController extends Controller
         );
 
         return $this->success(
-            JournalEntryResource::make($entry)->withContent()->resolve($request),
+            JournalEntryResponseData::fromModel($entry, includeContent: true)->toArray(),
             'Successfully updated journal entry.',
         );
     }

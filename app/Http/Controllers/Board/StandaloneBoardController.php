@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers\Board;
 
+use App\Data\Board\BoardDetailData;
+use App\Data\Board\BoardSummaryData;
 use App\Http\Controllers\Board\Concerns\InteractsWithStandaloneBoards;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Board\StoreBoardRequest;
 use App\Http\Requests\Board\UpdateBoardRequest;
-use App\Http\Resources\Board\BoardResource;
-use App\Http\Resources\Board\BoardSummaryResource;
 use App\Models\Board;
 use App\Services\Board\BoardService;
 use App\Services\Trash\TrashService;
@@ -26,19 +26,19 @@ class StandaloneBoardController extends Controller
             ->withCount('tasks')->with(['stages' => fn ($query) => $query->withCount('tasks')])
             ->orderBy('position')->get();
 
-        return $this->success(BoardSummaryResource::collection($boards)->resolve($request));
+        return $this->success($boards->map(fn (Board $board): array => BoardSummaryData::fromModel($board)->toArray())->all());
     }
 
     public function store(StoreBoardRequest $request)
     {
         $board = $this->boards->createStandalone($request->user(), $request->validated('name'));
 
-        return $this->success(BoardResource::make($board)->resolve($request), 'Successfully created board.', 201);
+        return $this->success(BoardDetailData::fromModel($board)->toArray(), 'Successfully created board.', 201);
     }
 
     public function show(Request $request, Board $board)
     {
-        return $this->success(BoardResource::make($this->loadBoard($this->standaloneBoard($request->user(), $board)))->resolve($request));
+        return $this->success(BoardDetailData::fromModel($this->loadBoard($this->standaloneBoard($request->user(), $board)))->toArray());
     }
 
     public function update(UpdateBoardRequest $request, Board $board)
@@ -46,7 +46,7 @@ class StandaloneBoardController extends Controller
         $board = $this->standaloneBoard($request->user(), $board);
         $board->update($request->validated());
 
-        return $this->success(BoardResource::make($this->loadBoard($board))->resolve($request), 'Successfully updated board.');
+        return $this->success(BoardDetailData::fromModel($this->loadBoard($board))->toArray(), 'Successfully updated board.');
     }
 
     public function destroy(Request $request, Board $board)

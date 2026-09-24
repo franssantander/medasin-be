@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers\Project;
 
+use App\Data\Board\BoardTaskData;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Project\Concerns\InteractsWithOwnedProjects;
 use App\Http\Requests\Board\MoveBoardTaskRequest;
 use App\Http\Requests\Board\StoreBoardTaskRequest;
 use App\Http\Requests\Board\UpdateBoardTaskRequest;
-use App\Http\Resources\Board\BoardTaskResource;
 use App\Models\Board;
 use App\Models\BoardTask;
 use App\Models\Project;
@@ -36,7 +36,7 @@ class ProjectBoardTaskController extends Controller
             ->select('board_tasks.*')
             ->get();
 
-        return $this->success(BoardTaskResource::collection($tasks)->resolve($request));
+        return $this->success($tasks->map(fn (BoardTask $task): array => BoardTaskData::fromModel($task)->toArray())->all());
     }
 
     public function store(StoreBoardTaskRequest $request, Project $project, Board $board)
@@ -46,7 +46,7 @@ class ProjectBoardTaskController extends Controller
         $board = $this->ownedBoard($project, $board);
         $task = $this->taskService->create($request->user(), $board, $request->validated());
 
-        return $this->success(BoardTaskResource::make($task)->resolve($request), 'Successfully created board task.', 201);
+        return $this->success(BoardTaskData::fromModel($task)->toArray(), 'Successfully created board task.', 201);
     }
 
     public function show(Request $request, Project $project, Board $board, BoardTask $task)
@@ -60,7 +60,7 @@ class ProjectBoardTaskController extends Controller
             'notes.area',
         ]);
 
-        return $this->success(BoardTaskResource::make($task)->resolve($request));
+        return $this->success(BoardTaskData::fromModel($task)->toArray());
     }
 
     public function update(UpdateBoardTaskRequest $request, Project $project, Board $board, BoardTask $task)
@@ -71,7 +71,7 @@ class ProjectBoardTaskController extends Controller
         $task = $this->boardTask($board, $task);
         $task = $this->taskService->update($request->user(), $board, $task, $request->validated());
 
-        return $this->success(BoardTaskResource::make($task)->resolve($request), 'Successfully updated board task.');
+        return $this->success(BoardTaskData::fromModel($task)->toArray(), 'Successfully updated board task.');
     }
 
     public function destroy(Request $request, Project $project, Board $board, BoardTask $task)
@@ -94,6 +94,6 @@ class ProjectBoardTaskController extends Controller
         $data = $request->validated();
         $task = $this->taskService->move($board, $task, $data['stage'], $data['position']);
 
-        return $this->success(BoardTaskResource::make($task)->resolve($request), 'Successfully moved board task.');
+        return $this->success(BoardTaskData::fromModel($task)->toArray(), 'Successfully moved board task.');
     }
 }

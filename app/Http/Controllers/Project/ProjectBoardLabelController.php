@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers\Project;
 
+use App\Data\Board\BoardLabelData;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Project\Concerns\InteractsWithOwnedProjects;
 use App\Http\Requests\Board\StoreBoardLabelRequest;
 use App\Http\Requests\Board\UpdateBoardLabelRequest;
-use App\Http\Resources\Board\BoardLabelResource;
 use App\Models\Board;
 use App\Models\BoardLabel;
 use App\Models\Project;
@@ -24,7 +24,7 @@ class ProjectBoardLabelController extends Controller
         $project = $this->ownedProject($request->user(), $project);
         $board = $this->ownedBoard($project, $board);
 
-        return $this->success(BoardLabelResource::collection($board->labels)->resolve($request));
+        return $this->success($board->labels->map(fn (BoardLabel $label): array => BoardLabelData::fromModel($label)->toArray())->all());
     }
 
     public function store(StoreBoardLabelRequest $request, Project $project, Board $board)
@@ -34,7 +34,7 @@ class ProjectBoardLabelController extends Controller
         $board = $this->ownedBoard($project, $board);
         $label = $board->labels()->create($request->validated());
 
-        return $this->success(BoardLabelResource::make($label)->resolve($request), 'Successfully created board label.', 201);
+        return $this->success(BoardLabelData::fromModel($label)->toArray(), 'Successfully created board label.', 201);
     }
 
     public function update(UpdateBoardLabelRequest $request, Project $project, Board $board, BoardLabel $label)
@@ -45,7 +45,7 @@ class ProjectBoardLabelController extends Controller
         $label = $this->boardLabel($board, $label);
         $label->update($request->validated());
 
-        return $this->success(BoardLabelResource::make($label->fresh())->resolve($request), 'Successfully updated board label.');
+        return $this->success(BoardLabelData::fromModel($label->fresh())->toArray(), 'Successfully updated board label.');
     }
 
     public function destroy(Request $request, Project $project, Board $board, BoardLabel $label)

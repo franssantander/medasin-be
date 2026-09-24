@@ -87,7 +87,7 @@ class LetterModuleTest extends TestCase
             'user_id' => $user->getKey(),
             'content_text' => null,
             'word_count' => 0,
-            'read_time_minutes' => 0,
+            'read_timle_minutes' => 0,
         ]);
     }
 

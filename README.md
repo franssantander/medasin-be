@@ -31,6 +31,17 @@ php artisan schedule:run
 
 Configure the command through the host's standard once-per-minute cron entry or run `php artisan schedule:work` under the application's process manager.
 
+## Plan reminder broadcasting
+
+Due calendar plans are dispatched by the scheduler. Set `BROADCAST_CONNECTION=reverb`, the `REVERB_APP_ID`, `REVERB_APP_KEY`, and `REVERB_APP_SECRET` credentials, and `REVERB_ALLOWED_ORIGINS` to the frontend origin. Set the frontend public key, host, port, and scheme to the Reverb endpoint reachable from the browser.
+
+Keep these processes running alongside the application:
+
+```bash
+php artisan queue:work
+php artisan reverb:start
+```
+
 ## Learning Laravel
 
 Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.

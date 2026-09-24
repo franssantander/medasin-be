@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers\Focus;
 
+use App\Data\Focus\FocusSessionData;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Focus\StartFocusSessionRequest;
 use App\Http\Requests\Focus\StoreFocusReflectionRequest;
-use App\Http\Resources\Focus\FocusSessionResource;
 use App\Models\FocusSession;
 use App\Services\Focus\FocusService;
 use Illuminate\Http\Request;
@@ -46,6 +46,6 @@ class FocusSessionController extends Controller
 
     private function sessionResponse(Request $request, FocusSession $session, string $message, int $status = 200)
     {
-        return $this->success(FocusSessionResource::make($session)->resolve($request), $message, $status);
+        return $this->success(FocusSessionData::fromModel($session)->toArray(), $message, $status);
     }
 }

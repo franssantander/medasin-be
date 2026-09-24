@@ -2,11 +2,12 @@
 
 namespace App\Http\Controllers\Focus;
 
+use App\Data\Focus\FocusSessionData;
+use App\Data\Focus\FocusSettingData;
+use App\Data\Focus\FocusTaskData;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Focus\UpdateFocusSettingsRequest;
-use App\Http\Resources\Focus\FocusSessionResource;
-use App\Http\Resources\Focus\FocusSettingResource;
-use App\Http\Resources\Focus\FocusTaskResource;
+use App\Models\FocusTask;
 use App\Services\Focus\FocusService;
 use Illuminate\Http\Request;
 
@@ -20,9 +21,9 @@ class FocusController extends Controller
         $dashboard = $this->focus->dashboard($request->user(), $data['timezone'] ?? 'UTC');
 
         return $this->success([
-            'settings' => FocusSettingResource::make($dashboard['settings'])->resolve($request),
-            'tasks' => FocusTaskResource::collection($dashboard['tasks'])->resolve($request),
-            'active_session' => $dashboard['active_session'] ? FocusSessionResource::make($dashboard['active_session'])->resolve($request) : null,
+            'settings' => FocusSettingData::fromModel($dashboard['settings'])->toArray(),
+            'tasks' => $dashboard['tasks']->map(fn (FocusTask $task): array => FocusTaskData::fromModel($task)->toArray())->all(),
+            'active_session' => $dashboard['active_session'] ? FocusSessionData::fromModel($dashboard['active_session'])->toArray() : null,
             'today' => $dashboard['today'],
             'suggested_next_type' => $dashboard['suggested_next_type'],
         ]);
@@ -48,6 +49,6 @@ class FocusController extends Controller
     {
         $settings = $this->focus->updateSettings($request->user(), $request->validated());
 
-        return $this->success(FocusSettingResource::make($settings)->resolve($request), 'Focus settings updated.');
+        return $this->success(FocusSettingData::fromModel($settings)->toArray(), 'Focus settings updated.');
     }
 }

@@ -4,14 +4,14 @@ namespace App\Http\Controllers\Project;
 
 use App\Data\Project\ProjectAreaData;
 use App\Data\Project\ProjectData;
+use App\Data\Project\ProjectDetailData;
+use App\Data\Project\ProjectListCardData;
 use App\Enum\BoardStageKey;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Project\Concerns\InteractsWithOwnedProjects;
 use App\Http\Requests\Project\StoreProjectRequest;
 use App\Http\Requests\Project\UpdateProjectAreaRequest;
 use App\Http\Requests\Project\UpdateProjectRequest;
-use App\Http\Resources\Project\ProjectDetailResource;
-use App\Http\Resources\Project\ProjectListCardResource;
 use App\Models\Project;
 use App\Models\Resource;
 use App\Services\Project\ProjectService;
@@ -54,7 +54,7 @@ class ProjectController extends Controller
             ->latest()
             ->get();
 
-        return $this->success(ProjectListCardResource::collection($data)->resolve($request));
+        return $this->success($data->map(fn (Project $project): array => ProjectListCardData::fromModel($project)->toArray())->all());
     }
 
     /**
@@ -107,7 +107,7 @@ class ProjectController extends Controller
             ->map(fn ($resource) => $this->resourceService->serialize($resource))
             ->values()
             ->all();
-        $payload = ProjectDetailResource::make($data)->resolve($request);
+        $payload = ProjectDetailData::fromModel($data)->toArray();
         $payload['resources'] = $resources;
 
         return $this->success($payload);
@@ -175,7 +175,7 @@ class ProjectController extends Controller
         );
 
         return $this->success(
-            ProjectListCardResource::make($data)->resolve($request),
+            ProjectListCardData::fromModel($data)->toArray(),
             'Successfully updated project area.',
         );
     }

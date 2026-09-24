@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers\Board;
 
+use App\Data\Board\BoardTaskData;
 use App\Http\Controllers\Board\Concerns\InteractsWithStandaloneBoards;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Board\MoveBoardTaskRequest;
 use App\Http\Requests\Board\StoreBoardTaskRequest;
 use App\Http\Requests\Board\UpdateBoardTaskRequest;
-use App\Http\Resources\Board\BoardTaskResource;
 use App\Models\Board;
 use App\Models\BoardTask;
 use App\Services\Board\BoardTaskService;
@@ -25,7 +25,7 @@ class StandaloneBoardTaskController extends Controller
         $board = $this->standaloneBoard($request->user(), $board);
         $task = $this->tasks->create($request->user(), $board, $request->validated());
 
-        return $this->success(BoardTaskResource::make($task)->resolve($request), 'Successfully created board task.', 201);
+        return $this->success(BoardTaskData::fromModel($task)->toArray(), 'Successfully created board task.', 201);
     }
 
     public function update(UpdateBoardTaskRequest $request, Board $board, BoardTask $task)
@@ -33,7 +33,7 @@ class StandaloneBoardTaskController extends Controller
         $board = $this->standaloneBoard($request->user(), $board);
         $task = $this->tasks->update($request->user(), $board, $this->boardTask($board, $task), $request->validated());
 
-        return $this->success(BoardTaskResource::make($task)->resolve($request), 'Successfully updated board task.');
+        return $this->success(BoardTaskData::fromModel($task)->toArray(), 'Successfully updated board task.');
     }
 
     public function destroy(Request $request, Board $board, BoardTask $task)
@@ -52,6 +52,6 @@ class StandaloneBoardTaskController extends Controller
         $data = $request->validated();
         $task = $this->tasks->move($board, $task, $data['stage'], $data['position']);
 
-        return $this->success(BoardTaskResource::make($task)->resolve($request), 'Successfully moved board task.');
+        return $this->success(BoardTaskData::fromModel($task)->toArray(), 'Successfully moved board task.');
     }
 }

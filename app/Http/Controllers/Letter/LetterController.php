@@ -3,13 +3,13 @@
 namespace App\Http\Controllers\Letter;
 
 use App\Data\Letter\LetterData;
+use App\Data\Letter\LetterResponseData;
 use App\Enum\LetterStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Letter\ListLetterRequest;
 use App\Http\Requests\Letter\StoreLetterMediaRequest;
 use App\Http\Requests\Letter\StoreLetterRequest;
 use App\Http\Requests\Letter\UpdateLetterRequest;
-use App\Http\Resources\Letter\LetterResource;
 use App\Models\Letter;
 use App\Services\Letter\LetterService;
 use App\Services\Trash\TrashService;
@@ -32,7 +32,7 @@ class LetterController extends Controller
             $status,
             $validated['per_page'] ?? 15,
         );
-        $letters->through(fn (Letter $letter): array => LetterResource::make($letter)->resolve($request));
+        $letters->through(fn (Letter $letter): array => LetterResponseData::fromModel($letter)->toArray());
 
         return $this->success($letters);
     }
@@ -45,7 +45,7 @@ class LetterController extends Controller
         );
 
         return $this->success(
-            LetterResource::make($letter)->withContent()->resolve($request),
+            LetterResponseData::fromModel($letter, includeContent: true)->toArray(),
             'Successfully created letter.',
             201,
         );
@@ -56,7 +56,7 @@ class LetterController extends Controller
         $letter = $this->letterService->find($request->user(), $letter);
 
         return $this->success(
-            LetterResource::make($letter)->withContent()->resolve($request),
+            LetterResponseData::fromModel($letter, includeContent: true)->toArray(),
         );
     }
 
@@ -81,7 +81,7 @@ class LetterController extends Controller
         );
 
         return $this->success(
-            LetterResource::make($letter)->withContent()->resolve($request),
+            LetterResponseData::fromModel($letter, includeContent: true)->toArray(),
             'Successfully updated letter.',
         );
     }
