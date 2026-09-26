@@ -228,6 +228,15 @@ class LetterExportService
                         ?? (16 / 9),
                 )
                 : null,
+            'hero_image_caption' => $heroImageUrl
+                ? (string) ($cover['hero_image_caption'] ?? $fallback['hero_image_caption'] ?? '')
+                : '',
+            'hero_image_caption_alignment' => $heroImageUrl
+                ? ($cover['hero_image_caption_alignment'] ?? $fallback['hero_image_caption_alignment'] ?? 'center')
+                : 'center',
+            'hero_image_caption_placement' => $heroImageUrl
+                ? ($cover['hero_image_caption_placement'] ?? $fallback['hero_image_caption_placement'] ?? 'overlay')
+                : 'overlay',
             'section_order' => $this->normalizeCoverSectionOrder(
                 $cover['section_order'] ?? $fallback['section_order'],
             ),
@@ -275,6 +284,9 @@ class LetterExportService
             'avatar_url' => null,
             'hero_image_url' => null,
             'hero_image_aspect_ratio' => null,
+            'hero_image_caption' => '',
+            'hero_image_caption_alignment' => 'center',
+            'hero_image_caption_placement' => 'overlay',
             'section_order' => ['header', 'title', 'entry', 'hero', 'author'],
         ];
     }

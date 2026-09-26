@@ -87,7 +87,7 @@ class LetterModuleTest extends TestCase
             'user_id' => $user->getKey(),
             'content_text' => null,
             'word_count' => 0,
-            'read_timle_minutes' => 0,
+            'read_time_minutes' => 0,
         ]);
     }
 
@@ -270,7 +270,10 @@ class LetterModuleTest extends TestCase
                         'author_name' => 'Mina Reyes',
                         'date_label' => '',
                         'avatar_url' => null,
-                        'hero_image_url' => null,
+                        'hero_image_url' => 'http://localhost/storage/cover.png',
+                        'hero_image_caption' => 'A story worth sharing',
+                        'hero_image_caption_alignment' => 'left',
+                        'hero_image_caption_placement' => 'below',
                         'section_order' => ['header', 'content', 'author', 'hero'],
                     ],
                     'blocks' => [],
@@ -292,6 +295,9 @@ class LetterModuleTest extends TestCase
             ->assertJsonPath('data.pages.0.title', 'Measured cover')
             ->assertJsonPath('data.pages.0.subtitle', substr($coverDescription, 0, 240))
             ->assertJsonPath('data.pages.0.cover.description_blocks.0.content', $coverDescription)
+            ->assertJsonPath('data.pages.0.cover.hero_image_caption', 'A story worth sharing')
+            ->assertJsonPath('data.pages.0.cover.hero_image_caption_alignment', 'left')
+            ->assertJsonPath('data.pages.0.cover.hero_image_caption_placement', 'below')
             ->assertJsonPath('data.pages.0.cover.section_order.1', 'title')
             ->assertJsonPath('data.pages.0.cover.section_order.2', 'entry')
             ->assertJsonPath('data.pages.1.kind', 'final')
@@ -384,6 +390,9 @@ class LetterModuleTest extends TestCase
         $this->assertSame('@minareads', $export->pages[1]['signature']['handle']);
         $this->assertSame('A public note', $export->pages[0]['title']);
         $this->assertNull($export->pages[0]['cover']['hero_image_aspect_ratio']);
+        $this->assertSame('', $export->pages[0]['cover']['hero_image_caption']);
+        $this->assertSame('center', $export->pages[0]['cover']['hero_image_caption_alignment']);
+        $this->assertSame('overlay', $export->pages[0]['cover']['hero_image_caption_placement']);
         $this->assertSame('author', $export->pages[0]['cover']['section_order'][4]);
     }
 
@@ -455,6 +464,9 @@ class LetterModuleTest extends TestCase
                         'avatar_url' => 'http://localhost/storage/avatar.png',
                         'hero_image_url' => 'http://localhost/storage/cover.png',
                         'hero_image_aspect_ratio' => 1.25,
+                        'hero_image_caption' => 'The landscape view ',
+                        'hero_image_caption_alignment' => 'right',
+                        'hero_image_caption_placement' => 'below',
                         'section_order' => ['content', 'author', 'hero', 'header'],
                     ],
                     'blocks' => [],
@@ -500,6 +512,9 @@ class LetterModuleTest extends TestCase
             ->assertJsonPath('data.export.pages.0.cover.description_blocks.0.content.0.styles.bold', true)
             ->assertJsonPath('data.export.pages.0.cover.author_name', 'Ciper')
             ->assertJsonPath('data.export.pages.0.cover.hero_image_aspect_ratio', 1.25)
+            ->assertJsonPath('data.export.pages.0.cover.hero_image_caption', 'The landscape view ')
+            ->assertJsonPath('data.export.pages.0.cover.hero_image_caption_alignment', 'right')
+            ->assertJsonPath('data.export.pages.0.cover.hero_image_caption_placement', 'below')
             ->assertJsonPath('data.export.pages.0.cover.section_order.0', 'title')
             ->assertJsonPath('data.export.pages.0.cover.section_order.1', 'entry')
             ->assertJsonPath('data.export.pages.0.cover.section_order.4', 'author')
@@ -520,6 +535,9 @@ class LetterModuleTest extends TestCase
         $this->assertSame(1.3, $export->pages[3]['text_scale']);
         $this->assertSame('right', $export->pages[0]['cover']['text_alignment']);
         $this->assertSame('http://localhost/storage/cover.png', $export->pages[0]['cover']['hero_image_url']);
+        $this->assertSame('The landscape view ', $export->pages[0]['cover']['hero_image_caption']);
+        $this->assertSame('right', $export->pages[0]['cover']['hero_image_caption_alignment']);
+        $this->assertSame('below', $export->pages[0]['cover']['hero_image_caption_placement']);
         $this->assertSame('Keep only this thought.', $export->pages[2]['blocks'][0]['content']);
         $letter->refresh();
         $this->assertSame('A custom cover', $letter->title);
@@ -622,6 +640,37 @@ class LetterModuleTest extends TestCase
         $this->assertSame($originalPages, $export->fresh()->pages);
     }
 
+    public function test_replacing_cover_image_preserves_caption_when_caption_fields_are_omitted(): void
+    {
+        $user = User::factory()->create();
+        $letter = Letter::factory()->for($user)->create();
+        $existingPages = $this->app->make(LetterPaginationService::class)->paginate($letter, LetterExportFormat::PORTRAIT);
+        $existingPages[0]['cover']['hero_image_url'] = 'http://localhost/storage/first.png';
+        $existingPages[0]['cover']['hero_image_caption'] = 'Keep this caption';
+        $existingPages[0]['cover']['hero_image_caption_alignment'] = 'right';
+        $existingPages[0]['cover']['hero_image_caption_placement'] = 'below';
+        $export = LetterExport::factory()->for($letter)->create([
+            'status' => LetterExportStatus::READY,
+            'pages' => $existingPages,
+            'page_count' => count($existingPages),
+        ]);
+        Passport::actingAs($user);
+        $pages = $this->measuredPages(2);
+        $pages[0]['cover'] = $existingPages[0]['cover'];
+        $pages[0]['cover']['hero_image_url'] = 'http://localhost/storage/replacement.png';
+        unset($pages[0]['cover']['hero_image_caption'], $pages[0]['cover']['hero_image_caption_alignment'], $pages[0]['cover']['hero_image_caption_placement']);
+
+        $this->patchJson(route('letters.exports.update', [$letter->uuid, $export->uuid]), ['pages' => $pages])
+            ->assertOk()
+            ->assertJsonPath('data.export.pages.0.cover.hero_image_url', 'http://localhost/storage/replacement.png')
+            ->assertJsonPath('data.export.pages.0.cover.hero_image_caption', 'Keep this caption')
+            ->assertJsonPath('data.export.pages.0.cover.hero_image_caption_alignment', 'right')
+            ->assertJsonPath('data.export.pages.0.cover.hero_image_caption_placement', 'below');
+
+        $this->assertSame('Keep this caption', $export->fresh()->pages[0]['cover']['hero_image_caption']);
+        $this->assertSame('below', $export->fresh()->pages[0]['cover']['hero_image_caption_placement']);
+    }
+
     public function test_cover_image_can_be_removed_from_a_ready_export(): void
     {
         $user = User::factory()->create();
@@ -653,6 +702,9 @@ class LetterModuleTest extends TestCase
                         'avatar_url' => null,
                         'hero_image_url' => 'http://localhost/storage/cover.png',
                         'hero_image_aspect_ratio' => 1.25,
+                        'hero_image_caption' => 'Previous image caption',
+                        'hero_image_caption_alignment' => 'right',
+                        'hero_image_caption_placement' => 'below',
                         'section_order' => ['header', 'title', 'entry', 'author', 'hero'],
                     ],
                     'blocks' => [],
@@ -704,6 +756,9 @@ class LetterModuleTest extends TestCase
                         'avatar_url' => null,
                         'hero_image_url' => null,
                         'hero_image_aspect_ratio' => null,
+                        'hero_image_caption' => 'Previous image caption',
+                        'hero_image_caption_alignment' => 'right',
+                        'hero_image_caption_placement' => 'below',
                         'section_order' => ['header', 'title', 'entry', 'author', 'hero'],
                     ],
                     'blocks' => [],
@@ -723,10 +778,16 @@ class LetterModuleTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.export.pages.0.cover.hero_image_url', null)
             ->assertJsonPath('data.export.pages.0.cover.hero_image_aspect_ratio', null)
+            ->assertJsonPath('data.export.pages.0.cover.hero_image_caption', '')
+            ->assertJsonPath('data.export.pages.0.cover.hero_image_caption_alignment', 'center')
+            ->assertJsonPath('data.export.pages.0.cover.hero_image_caption_placement', 'overlay')
             ->assertJsonPath('data.export.pages.0.cover.text_alignment', 'left');
 
         $this->assertNull($export->fresh()->pages[0]['cover']['hero_image_url']);
         $this->assertNull($export->fresh()->pages[0]['cover']['hero_image_aspect_ratio']);
+        $this->assertSame('', $export->fresh()->pages[0]['cover']['hero_image_caption']);
+        $this->assertSame('center', $export->fresh()->pages[0]['cover']['hero_image_caption_alignment']);
+        $this->assertSame('overlay', $export->fresh()->pages[0]['cover']['hero_image_caption_placement']);
         $this->assertSame('left', $export->fresh()->pages[0]['cover']['text_alignment']);
     }
 
@@ -772,6 +833,9 @@ class LetterModuleTest extends TestCase
                         'avatar_url' => null,
                         'hero_image_url' => null,
                         'hero_image_aspect_ratio' => 0,
+                        'hero_image_caption' => str_repeat('x', 121),
+                        'hero_image_caption_alignment' => 'justify',
+                        'hero_image_caption_placement' => 'sideways',
                         'section_order' => ['header', 'header', 'author', 'hero'],
                     ],
                     'blocks' => [],
@@ -790,6 +854,9 @@ class LetterModuleTest extends TestCase
                 'pages.0.cover.theme',
                 'pages.0.cover.text_alignment',
                 'pages.0.cover.hero_image_aspect_ratio',
+                'pages.0.cover.hero_image_caption',
+                'pages.0.cover.hero_image_caption_alignment',
+                'pages.0.cover.hero_image_caption_placement',
                 'pages.0.cover.section_order.1',
             ]);
 

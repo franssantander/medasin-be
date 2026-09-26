@@ -24,6 +24,7 @@ return Application::configure(basePath: dirname(__DIR__))
             AuthenticateFromCookie::class,
         ]);
         $middleware->trustProxies(at: '*');
+        $middleware->trimStrings(except: ['pages.*.cover.hero_image_caption']);
         $middleware->redirectGuestsTo(fn () => null);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

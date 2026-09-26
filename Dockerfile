@@ -40,6 +40,9 @@ RUN docker-php-ext-configure gd \
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
+# ---- PHP upload limits ----
+COPY .docker/uploads.ini /usr/local/etc/php/conf.d/uploads.ini
+
 # ---- Non-root user ----
 
 RUN addgroup -g ${GID} ${USER} \
