@@ -140,6 +140,22 @@ class ShowDashboardTest extends TestCase
         $this->assertSame('2026-09-10', substr($response->json('data.projects.0.last_activity_at'), 0, 10));
     }
 
+    public function test_project_cards_return_saved_and_null_icons(): void
+    {
+        $user = User::factory()->create();
+        $projectWithIcon = $this->createProject($user, 'Icon project', ['icon' => 'Rocket']);
+        $projectWithoutIcon = $this->createProject($user, 'Plain project');
+        Passport::actingAs($user);
+
+        $response = $this->getJson(route('dashboard.show'))
+            ->assertOk()
+            ->assertJsonCount(2, 'data.projects');
+
+        $projects = collect($response->json('data.projects'))->keyBy('uuid');
+        $this->assertSame('Rocket', $projects[$projectWithIcon->uuid]['icon']);
+        $this->assertSame(null, $projects[$projectWithoutIcon->uuid]['icon']);
+    }
+
     public function test_area_cards_count_non_deleted_goals_habits_and_unarchived_projects(): void
     {
         $user = User::factory()->create();

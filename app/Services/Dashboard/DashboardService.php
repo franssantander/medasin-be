@@ -67,7 +67,7 @@ class DashboardService
                 ->on('projects.id', '=', 'board_activity.context_id'))
             ->leftJoinSub($taskActivity, 'task_activity', fn ($join) => $join
                 ->on('projects.id', '=', 'task_activity.context_id'))
-            ->select(['projects.id', 'projects.uuid', 'projects.name', 'projects.area_id', 'projects.updated_at'])
+            ->select(['projects.id', 'projects.uuid', 'projects.name', 'projects.icon', 'projects.area_id', 'projects.updated_at'])
             ->selectRaw(<<<'SQL'
                 CASE
                     WHEN task_activity.last_task_activity_at IS NOT NULL
@@ -96,6 +96,7 @@ class DashboardService
                 return [
                     'uuid' => $project->uuid,
                     'name' => $project->name,
+                    'icon' => $project->icon,
                     'area' => $project->area ? [
                         'uuid' => $project->area->uuid,
                         'name' => $project->area->name,
