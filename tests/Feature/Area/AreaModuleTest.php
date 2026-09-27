@@ -321,6 +321,39 @@ class AreaModuleTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_weekly_habit_history_keeps_a_streak_while_today_is_pending(): void
+    {
+        $this->travelTo(Carbon::parse('2026-09-07 10:00:00'));
+        $user = User::factory()->create();
+        $area = $user->areas()->create(['name' => 'Health']);
+        Passport::actingAs($user);
+
+        $habit = $this->postJson(route('area.habits.store', $area), [
+            'name' => 'Exercise',
+            'frequency' => 'weekly',
+            'schedule' => ['days' => ['monday', 'wednesday']],
+        ])->assertCreated()->json('data');
+
+        $this->travelTo(Carbon::parse('2026-09-16 10:00:00'));
+        foreach (['2026-09-07', '2026-09-09', '2026-09-14'] as $date) {
+            $this->putJson(route('area.habits.check-ins.update', [$area, $habit['uuid'], $date]), ['completed' => true])->assertOk();
+        }
+
+        $historyUrl = route('area.habits.history', [$area, $habit['uuid']]).'?start_date=2026-09-07&end_date=2026-09-16';
+        $this->getJson($historyUrl)
+            ->assertOk()
+            ->assertJsonPath('data.current_streak', 3)
+            ->assertJsonPath('data.best_streak', 3)
+            ->assertJsonPath('data.scheduled_count', 4)
+            ->assertJsonPath('data.completed_count', 3)
+            ->assertJsonPath('data.completion_rate', 75);
+
+        $this->putJson(route('area.habits.check-ins.update', [$area, $habit['uuid'], '2026-09-16']), ['completed' => false])
+            ->assertOk()
+            ->assertJsonPath('data.current_streak', 0)
+            ->assertJsonPath('data.best_streak', 3);
+    }
+
     public function test_habit_check_in_rejects_unscheduled_dates_and_other_users(): void
     {
         $owner = User::factory()->create();

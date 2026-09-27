@@ -11,6 +11,7 @@ use App\Http\Requests\Area\UpdateHabitRequest;
 use App\Models\Area;
 use App\Models\Habit;
 use App\Services\Habit\HabitService;
+use App\Services\Habit\HabitStreakService;
 use App\Services\Trash\TrashService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
@@ -23,6 +24,7 @@ class AreaHabitController extends Controller
     public function __construct(
         private readonly TrashService $trashService,
         private readonly HabitService $habitService,
+        private readonly HabitStreakService $habitStreakService,
     ) {}
 
     public function index(Request $request, Area $area)
@@ -124,7 +126,7 @@ class AreaHabitController extends Controller
         if (! $habit->is_active) {
             throw ValidationException::withMessages(['habit' => 'Paused habits cannot be checked in.']);
         }
-        if (! $this->isScheduled($habit, $checkInDate, $timezone)) {
+        if (! $this->habitStreakService->isScheduled($habit, $checkInDate, $timezone)) {
             throw ValidationException::withMessages(['date' => 'This habit is not scheduled on that date.']);
         }
         $existing = $habit->checkIns()->whereDate('check_in_date', $checkInDate)->first();
@@ -153,25 +155,11 @@ class AreaHabitController extends Controller
         $rangeCheckIns = $habit->checkIns()->whereBetween('check_in_date', [$start, $end])->orderBy('check_in_date')->get();
         $today = CarbonImmutable::now($timezone)->startOfDay();
         $allCheckIns = $habit->checkIns()->whereDate('check_in_date', '<=', $today->toDateString())->get()->keyBy(fn ($item) => $item->check_in_date->toDateString());
-        $cursor = CarbonImmutable::parse($habit->created_at)->setTimezone($timezone)->startOfDay();
-        $current = 0;
-        $best = 0;
-        while ($cursor->lte($today)) {
-            if ($this->isScheduled($habit, $cursor, $timezone)) {
-                $entry = $allCheckIns->get($cursor->toDateString());
-                if ($entry?->completed) {
-                    $current++;
-                    $best = max($best, $current);
-                } elseif ($cursor->lt($today) || $entry) {
-                    $current = 0;
-                }
-            }
-            $cursor = $cursor->addDay();
-        }
+        $streaks = $this->habitStreakService->streaks($habit, $allCheckIns, $today, $timezone);
         $scheduled = 0;
         $completed = 0;
         for ($cursor = $start; $cursor->lte($end); $cursor = $cursor->addDay()) {
-            if ($this->isScheduled($habit, $cursor, $timezone)) {
+            if ($this->habitStreakService->isScheduled($habit, $cursor, $timezone)) {
                 $scheduled++;
                 if ($allCheckIns->get($cursor->toDateString())?->completed) {
                     $completed++;
@@ -181,26 +169,12 @@ class AreaHabitController extends Controller
 
         return [
             'check_ins' => $rangeCheckIns->map(fn ($item) => ['date' => $item->check_in_date->toDateString(), 'completed' => $item->completed])->values(),
-            'current_streak' => $current,
-            'best_streak' => $best,
+            'current_streak' => $streaks['current'],
+            'best_streak' => $streaks['best'],
             'scheduled_count' => $scheduled,
             'completed_count' => $completed,
             'completion_rate' => $scheduled ? (int) round(($completed / $scheduled) * 100) : 0,
         ];
-    }
-
-    private function isScheduled(Habit $habit, CarbonImmutable $date, string $timezone): bool
-    {
-        $frequency = $habit->frequency->value;
-        if ($frequency === 'daily') {
-            return true;
-        }
-        $schedule = $habit->schedule ?? [];
-        if ($frequency === 'monthly') {
-            return in_array($date->day, $schedule['dates'] ?? [$habit->created_at->copy()->setTimezone($timezone)->day], true);
-        }
-
-        return in_array(strtolower($date->englishDayOfWeek), $schedule['days'] ?? [strtolower($habit->created_at->copy()->setTimezone($timezone)->englishDayOfWeek)], true);
     }
 
     private function validateSchedule(array $data, ?Habit $habit = null): void

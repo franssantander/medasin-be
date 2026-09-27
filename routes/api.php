@@ -1,6 +1,7 @@
 <?php
 
 require __DIR__.'/v1/auth.php';
+require __DIR__.'/v1/dashboard.php';
 require __DIR__.'/v1/plan.php';
 require __DIR__.'/v1/calendar.php';
 require __DIR__.'/v1/notification.php';

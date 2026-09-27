@@ -2,8 +2,10 @@
 
 namespace App\Models;
 
+use App\Enum\BoardStageKey;
 use App\Models\Concerns\HasUuid;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -80,5 +82,16 @@ class Project extends Model
             'context_id',
             'board_id',
         )->where('boards.context_type', $this->getMorphClass());
+    }
+
+    public function scopeWithKanbanCounts(Builder $query): Builder
+    {
+        return $query->withCount([
+            'boardTasks as total_tasks_count',
+            'boardTasks as done_tasks_count' => fn (Builder $tasks): Builder => $tasks->whereHas(
+                'stage',
+                fn (Builder $stages): Builder => $stages->where('key', BoardStageKey::DONE->value),
+            ),
+        ]);
     }
 }

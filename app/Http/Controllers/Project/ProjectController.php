@@ -6,7 +6,6 @@ use App\Data\Project\ProjectAreaData;
 use App\Data\Project\ProjectData;
 use App\Data\Project\ProjectDetailData;
 use App\Data\Project\ProjectListCardData;
-use App\Enum\BoardStageKey;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Project\Concerns\InteractsWithOwnedProjects;
 use App\Http\Requests\Project\StoreProjectRequest;
@@ -49,7 +48,7 @@ class ProjectController extends Controller
             $query->whereNotNull('archived_at');
         }
 
-        $data = $this->withKanbanCounts($query)
+        $data = $query->withKanbanCounts()
             ->with(['area' => fn ($areaQuery) => $areaQuery->withCount('goals')])
             ->latest()
             ->get();
@@ -81,9 +80,10 @@ class ProjectController extends Controller
      */
     public function show(Request $request, Project $project): JsonResponse
     {
-        $data = $this->withKanbanCounts($request->user()
+        $data = $request->user()
             ->projects()
-            ->whereKey($project->getKey()))
+            ->whereKey($project->getKey())
+            ->withKanbanCounts()
             ->with([
                 'area' => fn ($query) => $query->withCount('goals'),
                 'boards' => fn ($query) => $query
@@ -223,16 +223,5 @@ class ProjectController extends Controller
         });
 
         return $this->success(null, 'Successfully removed resource from project.');
-    }
-
-    private function withKanbanCounts($query)
-    {
-        return $query->withCount([
-            'boardTasks as total_tasks_count',
-            'boardTasks as done_tasks_count' => fn ($tasks) => $tasks->whereHas(
-                'stage',
-                fn ($stages) => $stages->where('key', BoardStageKey::DONE->value),
-            ),
-        ]);
     }
 }
