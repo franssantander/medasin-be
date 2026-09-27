@@ -212,6 +212,9 @@ class LetterExportService
             'show_logo' => (bool) ($cover['show_logo'] ?? $fallback['show_logo']),
             'text_alignment' => $cover['text_alignment'] ?? $fallback['text_alignment'],
             'subheader' => (string) ($cover['subheader'] ?? $fallback['subheader']),
+            'subheader_font_scale' => (float) ($cover['subheader_font_scale'] ?? $fallback['subheader_font_scale']),
+            'title_font_scale' => (float) ($cover['title_font_scale'] ?? $fallback['title_font_scale']),
+            'body_font_scale' => (float) ($cover['body_font_scale'] ?? $fallback['body_font_scale']),
             'description_blocks' => array_values(
                 $cover['description_blocks'] ?? $fallback['description_blocks'],
             ),
@@ -275,6 +278,9 @@ class LetterExportService
             'show_logo' => true,
             'text_alignment' => 'center',
             'subheader' => 'A LETTER',
+            'subheader_font_scale' => 1.0,
+            'title_font_scale' => 1.0,
+            'body_font_scale' => 1.0,
             'description_blocks' => [[
                 'type' => 'paragraph',
                 'content' => (string) ($letter->subtitle ?? ''),

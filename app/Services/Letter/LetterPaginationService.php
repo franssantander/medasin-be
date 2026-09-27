@@ -62,6 +62,9 @@ class LetterPaginationService
                 'show_logo' => true,
                 'text_alignment' => 'center',
                 'subheader' => 'A LETTER',
+                'subheader_font_scale' => 1.0,
+                'title_font_scale' => 1.0,
+                'body_font_scale' => 1.0,
                 'description_blocks' => [[
                     'type' => 'paragraph',
                     'content' => (string) ($letter->subtitle ?? ''),

@@ -263,6 +263,9 @@ class LetterModuleTest extends TestCase
                         'theme' => 'light',
                         'show_logo' => true,
                         'subheader' => 'A LETTER',
+                        'subheader_font_scale' => 0.85,
+                        'title_font_scale' => 1.2,
+                        'body_font_scale' => 1.35,
                         'description_blocks' => [[
                             'type' => 'paragraph',
                             'content' => $coverDescription,
@@ -294,6 +297,9 @@ class LetterModuleTest extends TestCase
             ->assertJsonPath('data.page_count', 2)
             ->assertJsonPath('data.pages.0.title', 'Measured cover')
             ->assertJsonPath('data.pages.0.subtitle', substr($coverDescription, 0, 240))
+            ->assertJsonPath('data.pages.0.cover.subheader_font_scale', 0.85)
+            ->assertJsonPath('data.pages.0.cover.title_font_scale', 1.2)
+            ->assertJsonPath('data.pages.0.cover.body_font_scale', 1.35)
             ->assertJsonPath('data.pages.0.cover.description_blocks.0.content', $coverDescription)
             ->assertJsonPath('data.pages.0.cover.hero_image_caption', 'A story worth sharing')
             ->assertJsonPath('data.pages.0.cover.hero_image_caption_alignment', 'left')
@@ -388,6 +394,9 @@ class LetterModuleTest extends TestCase
         $this->assertSame('auto', $export->pages[0]['text_scale_mode']);
         $this->assertSame('Mina Reyes', $export->pages[1]['signature']['name']);
         $this->assertSame('@minareads', $export->pages[1]['signature']['handle']);
+        $this->assertEquals(1.0, $export->pages[0]['cover']['subheader_font_scale']);
+        $this->assertEquals(1.0, $export->pages[0]['cover']['title_font_scale']);
+        $this->assertEquals(1.0, $export->pages[0]['cover']['body_font_scale']);
         $this->assertSame('A public note', $export->pages[0]['title']);
         $this->assertNull($export->pages[0]['cover']['hero_image_aspect_ratio']);
         $this->assertSame('', $export->pages[0]['cover']['hero_image_caption']);
@@ -451,6 +460,9 @@ class LetterModuleTest extends TestCase
                         'show_logo' => false,
                         'text_alignment' => 'right',
                         'subheader' => 'CIPER DATASETS',
+                        'subheader_font_scale' => 0.75,
+                        'title_font_scale' => 1.4,
+                        'body_font_scale' => 1.1,
                         'description_blocks' => [[
                             'type' => 'paragraph',
                             'content' => [[
@@ -509,6 +521,9 @@ class LetterModuleTest extends TestCase
             ->assertJsonPath('data.export.pages.0.cover.theme', 'dark')
             ->assertJsonPath('data.export.pages.0.cover.show_logo', false)
             ->assertJsonPath('data.export.pages.0.cover.text_alignment', 'right')
+            ->assertJsonPath('data.export.pages.0.cover.subheader_font_scale', 0.75)
+            ->assertJsonPath('data.export.pages.0.cover.title_font_scale', 1.4)
+            ->assertJsonPath('data.export.pages.0.cover.body_font_scale', 1.1)
             ->assertJsonPath('data.export.pages.0.cover.description_blocks.0.content.0.styles.bold', true)
             ->assertJsonPath('data.export.pages.0.cover.author_name', 'Ciper')
             ->assertJsonPath('data.export.pages.0.cover.hero_image_aspect_ratio', 1.25)
@@ -649,6 +664,9 @@ class LetterModuleTest extends TestCase
         $existingPages[0]['cover']['hero_image_caption'] = 'Keep this caption';
         $existingPages[0]['cover']['hero_image_caption_alignment'] = 'right';
         $existingPages[0]['cover']['hero_image_caption_placement'] = 'below';
+        $existingPages[0]['cover']['subheader_font_scale'] = 0.85;
+        $existingPages[0]['cover']['title_font_scale'] = 1.2;
+        $existingPages[0]['cover']['body_font_scale'] = 1.3;
         $export = LetterExport::factory()->for($letter)->create([
             'status' => LetterExportStatus::READY,
             'pages' => $existingPages,
@@ -659,13 +677,17 @@ class LetterModuleTest extends TestCase
         $pages[0]['cover'] = $existingPages[0]['cover'];
         $pages[0]['cover']['hero_image_url'] = 'http://localhost/storage/replacement.png';
         unset($pages[0]['cover']['hero_image_caption'], $pages[0]['cover']['hero_image_caption_alignment'], $pages[0]['cover']['hero_image_caption_placement']);
+        unset($pages[0]['cover']['subheader_font_scale'], $pages[0]['cover']['title_font_scale'], $pages[0]['cover']['body_font_scale']);
 
         $this->patchJson(route('letters.exports.update', [$letter->uuid, $export->uuid]), ['pages' => $pages])
             ->assertOk()
             ->assertJsonPath('data.export.pages.0.cover.hero_image_url', 'http://localhost/storage/replacement.png')
             ->assertJsonPath('data.export.pages.0.cover.hero_image_caption', 'Keep this caption')
             ->assertJsonPath('data.export.pages.0.cover.hero_image_caption_alignment', 'right')
-            ->assertJsonPath('data.export.pages.0.cover.hero_image_caption_placement', 'below');
+            ->assertJsonPath('data.export.pages.0.cover.hero_image_caption_placement', 'below')
+            ->assertJsonPath('data.export.pages.0.cover.subheader_font_scale', 0.85)
+            ->assertJsonPath('data.export.pages.0.cover.title_font_scale', 1.2)
+            ->assertJsonPath('data.export.pages.0.cover.body_font_scale', 1.3);
 
         $this->assertSame('Keep this caption', $export->fresh()->pages[0]['cover']['hero_image_caption']);
         $this->assertSame('below', $export->fresh()->pages[0]['cover']['hero_image_caption_placement']);
@@ -827,6 +849,9 @@ class LetterModuleTest extends TestCase
                         'show_logo' => true,
                         'text_alignment' => 'justify',
                         'subheader' => 'A LETTER',
+                        'subheader_font_scale' => 0.6,
+                        'title_font_scale' => 1.5,
+                        'body_font_scale' => 'large',
                         'description_blocks' => [],
                         'author_name' => '',
                         'date_label' => '',
@@ -853,6 +878,9 @@ class LetterModuleTest extends TestCase
             ->assertJsonValidationErrors([
                 'pages.0.cover.theme',
                 'pages.0.cover.text_alignment',
+                'pages.0.cover.subheader_font_scale',
+                'pages.0.cover.title_font_scale',
+                'pages.0.cover.body_font_scale',
                 'pages.0.cover.hero_image_aspect_ratio',
                 'pages.0.cover.hero_image_caption',
                 'pages.0.cover.hero_image_caption_alignment',
