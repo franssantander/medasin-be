@@ -3,7 +3,7 @@
 namespace Tests\Feature\Resource;
 
 use App\Models\User;
-use App\Services\Dashboard\RecentResourceService;
+use App\Services\Home\RecentResourceService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Tests\TestCase;

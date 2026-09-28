@@ -1,6 +1,6 @@
 <?php
 
-namespace Tests\Feature\Dashboard;
+namespace Tests\Feature\Home;
 
 use App\Enum\BoardStageKey;
 use App\Models\Area;
@@ -13,20 +13,25 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Passport\Passport;
 use Tests\TestCase;
 
-class ShowDashboardTest extends TestCase
+class ShowHomeTest extends TestCase
 {
     use RefreshDatabase;
 
     public function test_returns_401_when_no_api_token_is_present(): void
     {
-        $this->getJson(route('dashboard.show'))->assertUnauthorized();
+        $this->getJson(route('home.show'))->assertUnauthorized();
+    }
+
+    public function test_returns_404_for_removed_dashboard_endpoint(): void
+    {
+        $this->getJson('/api/v1/dashboard')->assertNotFound();
     }
 
     public function test_returns_zero_counts_and_empty_sections_for_a_new_user(): void
     {
         Passport::actingAs(User::factory()->create());
 
-        $this->getJson(route('dashboard.show'))
+        $this->getJson(route('home.show'))
             ->assertOk()
             ->assertJsonPath('status', 200)
             ->assertJsonPath('data.stats', [
@@ -70,7 +75,7 @@ class ShowDashboardTest extends TestCase
         $otherUser->resources()->create(['title' => 'Private topic', 'content' => ['type' => 'doc']]);
         Passport::actingAs($user);
 
-        $response = $this->getJson(route('dashboard.show'))
+        $response = $this->getJson(route('home.show'))
             ->assertOk()
             ->assertJsonPath('data.stats.active_projects', 1)
             ->assertJsonPath('data.stats.areas', 1)
@@ -118,7 +123,7 @@ class ShowDashboardTest extends TestCase
         $updatedTask->update(['title' => 'Recently updated task']);
         Passport::actingAs($user);
 
-        $response = $this->getJson(route('dashboard.show'))
+        $response = $this->getJson(route('home.show'))
             ->assertOk()
             ->assertJsonCount(6, 'data.projects')
             ->assertJsonPath('data.stats.active_projects', 6)
@@ -147,7 +152,7 @@ class ShowDashboardTest extends TestCase
         $projectWithoutIcon = $this->createProject($user, 'Plain project');
         Passport::actingAs($user);
 
-        $response = $this->getJson(route('dashboard.show'))
+        $response = $this->getJson(route('home.show'))
             ->assertOk()
             ->assertJsonCount(2, 'data.projects');
 
@@ -175,7 +180,7 @@ class ShowDashboardTest extends TestCase
         $deletedProject->delete();
         Passport::actingAs($user);
 
-        $this->getJson(route('dashboard.show'))
+        $this->getJson(route('home.show'))
             ->assertOk()
             ->assertJsonPath('data.areas.0.uuid', $area->uuid)
             ->assertJsonPath('data.areas.0.name', 'Health')
@@ -210,7 +215,7 @@ class ShowDashboardTest extends TestCase
         $deleted->delete();
         Passport::actingAs($user);
 
-        $response = $this->getJson(route('dashboard.show'))
+        $response = $this->getJson(route('home.show'))
             ->assertOk()
             ->assertJsonPath('data.stats.resources_saved', 3)
             ->assertJsonCount(4, 'data.recent_resources')
@@ -247,7 +252,7 @@ class ShowDashboardTest extends TestCase
 
         Passport::actingAs($user);
 
-        $response = $this->getJson(route('dashboard.show'))
+        $response = $this->getJson(route('home.show'))
             ->assertOk()
             ->assertJsonCount(5, 'data.recent_resources');
 
@@ -281,7 +286,7 @@ class ShowDashboardTest extends TestCase
         $this->travelTo(CarbonImmutable::parse('2026-09-28 12:00:00 UTC'));
         Passport::actingAs($user);
 
-        $this->getJson(route('dashboard.show'))
+        $this->getJson(route('home.show'))
             ->assertOk()
             ->assertJsonPath('data.stats.habit_streak', 3);
     }
@@ -297,7 +302,7 @@ class ShowDashboardTest extends TestCase
         $this->travelTo(CarbonImmutable::parse('2026-09-28 12:00:00 UTC'));
         Passport::actingAs($user);
 
-        $this->getJson(route('dashboard.show'))
+        $this->getJson(route('home.show'))
             ->assertOk()
             ->assertJsonPath('data.stats.habit_streak', 0);
     }
@@ -313,10 +318,10 @@ class ShowDashboardTest extends TestCase
         $this->travelTo(CarbonImmutable::parse('2026-09-27 16:30:00 UTC'));
         Passport::actingAs($user);
 
-        $this->getJson(route('dashboard.show'))
+        $this->getJson(route('home.show'))
             ->assertOk()
             ->assertJsonPath('data.stats.habit_streak', 2);
-        $this->getJson(route('dashboard.show', ['timezone' => 'Asia/Manila']))
+        $this->getJson(route('home.show', ['timezone' => 'Asia/Manila']))
             ->assertOk()
             ->assertJsonPath('data.stats.habit_streak', 0);
     }
@@ -325,7 +330,7 @@ class ShowDashboardTest extends TestCase
     {
         Passport::actingAs(User::factory()->create());
 
-        $this->getJson(route('dashboard.show', ['timezone' => 'Mars/Olympus_Mons']))
+        $this->getJson(route('home.show', ['timezone' => 'Mars/Olympus_Mons']))
             ->assertUnprocessable()
             ->assertJsonValidationErrors('timezone');
     }

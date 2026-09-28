@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services\Dashboard;
+namespace App\Services\Home;
 
 use App\Models\Resource;
 use App\Models\ResourceAttachment;

@@ -1,11 +1,11 @@
 <?php
 
-namespace App\Http\Requests\Dashboard;
+namespace App\Http\Requests\Home;
 
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 
-class ShowDashboardRequest extends FormRequest
+class ShowHomeRequest extends FormRequest
 {
     public function authorize(): bool
     {

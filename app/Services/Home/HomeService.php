@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services\Dashboard;
+namespace App\Services\Home;
 
 use App\Enum\Status;
 use App\Models\Area;
@@ -11,7 +11,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 
-class DashboardService
+class HomeService
 {
     public function __construct(
         private readonly HabitStreakService $habitStreaks,
