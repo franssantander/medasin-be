@@ -7,6 +7,7 @@ use App\Models\FocusSession;
 use App\Models\JournalEntry;
 use App\Models\TrashEntry;
 use App\Models\User;
+use App\Services\Search\SearchText;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -51,7 +52,7 @@ class JournalService
             $entry = $user->journalEntries()->create([
                 'title' => $attributes['title'],
                 'content' => $attributes['content'],
-                'content_text' => $this->contentText($attributes['content']),
+                'content_text' => SearchText::fromDocument($attributes['content']),
             ]);
             $this->syncResources($user, $entry, $resourceUuids);
 
@@ -74,7 +75,7 @@ class JournalService
             }
             if (array_key_exists('content', $attributes)) {
                 $updates['content'] = $attributes['content'];
-                $updates['content_text'] = $this->contentText($attributes['content']);
+                $updates['content_text'] = SearchText::fromDocument($attributes['content']);
             }
             if ($updates !== []) {
                 $entry->update($updates);
@@ -104,7 +105,7 @@ class JournalService
         $attributes = [
             'title' => $this->focusReflectionTitle($session),
             'content' => $this->documentFromNote($note),
-            'content_text' => $note !== null ? ($this->contentText($this->documentFromNote($note)) ?: null) : null,
+            'content_text' => $note !== null ? SearchText::fromDocument($this->documentFromNote($note)) : null,
             'focus_session_id' => $session->getKey(),
         ];
 
@@ -177,44 +178,5 @@ class JournalService
                 'content' => $note ?? '',
             ]],
         ], JSON_THROW_ON_ERROR);
-    }
-
-    private function contentText(string $content): ?string
-    {
-        $document = json_decode($content, true);
-        if (! is_array($document)) {
-            return trim($content) ?: null;
-        }
-
-        $text = trim($this->extractText($document));
-
-        return $text !== '' ? $text : null;
-    }
-
-    private function extractText(mixed $value): string
-    {
-        if (! is_array($value)) {
-            return is_string($value) ? $value : '';
-        }
-
-        $parts = [];
-        if (isset($value['text']) && is_string($value['text'])) {
-            $parts[] = $value['text'];
-        }
-        foreach (['blocks', 'content', 'children', 'rows', 'cells'] as $key) {
-            if (array_key_exists($key, $value)) {
-                $parts[] = $this->extractText($value[$key]);
-            }
-        }
-        foreach ($value as $key => $child) {
-            if (is_int($key)) {
-                $parts[] = $this->extractText($child);
-            }
-        }
-        if (isset($value['props']['label']) && is_string($value['props']['label'])) {
-            $parts[] = $value['props']['label'];
-        }
-
-        return implode(' ', array_filter($parts, fn (string $part): bool => $part !== ''));
     }
 }

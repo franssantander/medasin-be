@@ -18,14 +18,6 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('board_labels', function (Blueprint $table) {
-            $table->softDeletes();
-        });
-
-        Schema::table('resource_attachments', function (Blueprint $table) {
-            $table->softDeletes();
-        });
-
         Schema::create('trash_entries', function (Blueprint $table) {
             $table->id();
             $table->uuid('uuid')->unique();
@@ -125,13 +117,5 @@ return new class extends Migration
     public function down(): void
     {
         Schema::dropIfExists('trash_entries');
-
-        Schema::table('resource_attachments', function (Blueprint $table) {
-            $table->dropSoftDeletes();
-        });
-
-        Schema::table('board_labels', function (Blueprint $table) {
-            $table->dropSoftDeletes();
-        });
     }
 };

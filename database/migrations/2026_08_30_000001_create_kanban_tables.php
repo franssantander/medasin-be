@@ -59,6 +59,7 @@ return new class extends Migration
             $table->string('name', 50);
             $table->enum('color', array_column(BoardLabelColor::cases(), 'value'));
             $table->timestamps();
+            $table->softDeletes();
             $table->unique(['board_id', 'name']);
         });
 

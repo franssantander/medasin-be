@@ -15,3 +15,4 @@ require __DIR__.'/v1/focus.php';
 require __DIR__.'/v1/habit.php';
 require __DIR__.'/v1/journal.php';
 require __DIR__.'/v1/letter.php';
+require __DIR__.'/v1/search.php';

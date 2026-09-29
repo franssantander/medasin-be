@@ -55,6 +55,7 @@ return new class extends Migration
             $table->string('mime_type')->nullable();
             $table->unsignedBigInteger('size')->nullable();
             $table->timestamps();
+            $table->softDeletes();
         });
 
         Schema::create('resource_tags', function (Blueprint $table) {

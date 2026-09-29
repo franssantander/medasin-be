@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\HasUuid;
+use App\Services\Search\SearchText;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -30,6 +31,12 @@ class Note extends Model
 
     protected static function booted(): void
     {
+        static::saving(function (Note $note): void {
+            if ($note->isDirty('content')) {
+                $note->content_text = SearchText::fromDocument($note->content);
+            }
+        });
+
         static::creating(function (Note $note): void {
             if ($note->user_id === null && $note->area_id !== null) {
                 $note->user_id = Area::query()->whereKey($note->area_id)->value('user_id');

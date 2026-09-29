@@ -1,6 +1,5 @@
 <?php
 
-use App\Enum\LetterExportFormat;
 use App\Enum\LetterExportStatus;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -17,7 +16,7 @@ return new class extends Migration
             $table->id();
             $table->uuid('uuid')->unique();
             $table->foreignId('letter_id')->constrained()->cascadeOnDelete();
-            $table->enum('format', array_column(LetterExportFormat::cases(), 'value'));
+            $table->enum('format', ['portrait', 'square', 'story', 'landscape']);
             $table->unsignedSmallInteger('canvas_width');
             $table->unsignedSmallInteger('canvas_height');
             $table->string('source_hash', 64);

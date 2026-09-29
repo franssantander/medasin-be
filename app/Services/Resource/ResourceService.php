@@ -8,6 +8,7 @@ use App\Data\Resource\StoreResourceData;
 use App\Models\Resource;
 use App\Models\ResourceTag;
 use App\Models\User;
+use App\Services\Search\SearchText;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
@@ -79,7 +80,7 @@ class ResourceService
                     'icon' => $data->icon,
                     'background' => $data->background,
                     'content' => $data->content,
-                    'content_text' => $data->content === null ? null : $this->extractText($data->content),
+                    'content_text' => SearchText::fromDocument($data->content),
                 ]);
 
                 foreach ($data->links as $url) {
@@ -134,7 +135,7 @@ class ResourceService
                 'icon' => $data['icon'] ?? null,
                 'background' => $data['background'] ?? null,
                 'content' => $content,
-                'content_text' => $content === null ? null : $this->extractText($content),
+                'content_text' => SearchText::fromDocument($content),
             ]);
 
             $tagIds = ResourceTag::query()->where('user_id', $user->id)->whereIn('uuid', $data['tag_uuids'] ?? [])->pluck('id')->all();
@@ -243,20 +244,5 @@ class ResourceService
             'projects' => $resource->projects->map->only(['uuid', 'name'])->all(),
             'areas' => $resource->areas->map->only(['uuid', 'name'])->all(),
         ];
-    }
-
-    private function extractText(array $node): string
-    {
-        $parts = [];
-        if (isset($node['text']) && is_string($node['text'])) {
-            $parts[] = $node['text'];
-        }
-        foreach ($node as $value) {
-            if (is_array($value)) {
-                $parts[] = $this->extractText($value);
-            }
-        }
-
-        return trim(implode(' ', $parts));
     }
 }
