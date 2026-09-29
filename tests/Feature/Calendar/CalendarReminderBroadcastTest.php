@@ -9,6 +9,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Str;
 use Laravel\Passport\Passport;
 use Tests\TestCase;
 
@@ -61,6 +62,18 @@ class CalendarReminderBroadcastTest extends TestCase
         ))->handle();
 
         Event::assertNotDispatched(CalendarPlanReminderDelivered::class);
+    }
+
+    public function test_local_browser_origin_matches_reverb_configuration(): void
+    {
+        $allowedOrigins = config('reverb.apps.apps.0.allowed_origins');
+
+        $this->assertTrue(collect($allowedOrigins)->contains(
+            fn (string $allowedOrigin): bool => Str::is($allowedOrigin, 'localhost'),
+        ));
+        $this->assertFalse(collect($allowedOrigins)->contains(
+            fn (string $allowedOrigin): bool => Str::is($allowedOrigin, 'untrusted.example'),
+        ));
     }
 
     public function test_only_owner_can_authorize_notification_channel(): void
