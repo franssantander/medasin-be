@@ -486,8 +486,8 @@ class LetterModuleTest extends TestCase
                 [
                     'uuid' => '44444444-4444-4444-8444-444444444444',
                     'layout' => 'body',
-                    'text_scale' => 1,
-                    'text_scale_mode' => 'auto',
+                    'text_scale' => 0.85,
+                    'text_scale_mode' => 'manual',
                     'title' => null,
                     'subtitle' => null,
                     'content_source' => 'cover_entry',
@@ -505,8 +505,8 @@ class LetterModuleTest extends TestCase
                 [
                     'uuid' => '22222222-2222-4222-8222-222222222222',
                     'layout' => 'body',
-                    'text_scale' => 1.3,
-                    'text_scale_mode' => 'auto',
+                    'text_scale' => 0.85,
+                    'text_scale_mode' => 'manual',
                     'title' => null,
                     'subtitle' => null,
                     'blocks' => [['type' => 'paragraph', 'content' => 'Closing copy.']],
@@ -547,7 +547,7 @@ class LetterModuleTest extends TestCase
 
         $export->refresh();
         $this->assertSame(4, $export->page_count);
-        $this->assertSame(1.3, $export->pages[3]['text_scale']);
+        $this->assertSame(0.85, $export->pages[3]['text_scale']);
         $this->assertSame('right', $export->pages[0]['cover']['text_alignment']);
         $this->assertSame('http://localhost/storage/cover.png', $export->pages[0]['cover']['hero_image_url']);
         $this->assertSame('The landscape view ', $export->pages[0]['cover']['hero_image_caption']);
@@ -562,6 +562,14 @@ class LetterModuleTest extends TestCase
             ['type' => 'paragraph', 'content' => 'Closing copy.'],
         ], json_decode($letter->content, true, 512, JSON_THROW_ON_ERROR)['blocks']);
         $this->assertSame($letter->sourceHash(), $export->source_hash);
+
+        $this->getJson(route('letters.exports.show', [$letter->uuid, $export->uuid]))
+            ->assertOk()
+            ->assertJsonPath('data.pages.0.text_scale', 1.15)
+            ->assertJsonPath('data.pages.1.text_scale', 0.85)
+            ->assertJsonPath('data.pages.2.text_scale', 0.85)
+            ->assertJsonPath('data.pages.3.text_scale', 0.85)
+            ->assertJsonPath('data.pages.2.blocks.0.content', 'Keep only this thought.');
     }
 
     public function test_ready_export_saves_independent_last_page_author_details(): void
@@ -889,6 +897,50 @@ class LetterModuleTest extends TestCase
             ]);
 
         $this->assertNull($export->fresh()->pages);
+    }
+
+    public function test_prepared_export_rejects_mixed_non_cover_text_sizes(): void
+    {
+        $user = User::factory()->create();
+        $letter = Letter::factory()->for($user)->create();
+        $pages = $this->measuredPages(3);
+        $pages[1]['text_scale'] = 0.85;
+        $pages[1]['text_scale_mode'] = 'manual';
+        Passport::actingAs($user);
+
+        $this->postJson(route('letters.exports.store', $letter->uuid), [
+            'format' => LetterExportFormat::PORTRAIT->value,
+            'pages' => $pages,
+        ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['pages.2.text_scale', 'pages.2.text_scale_mode']);
+
+        $this->assertDatabaseCount('letter_exports', 0);
+    }
+
+    public function test_ready_export_rejects_mixed_non_cover_text_sizes_without_saving(): void
+    {
+        $user = User::factory()->create();
+        $letter = Letter::factory()->for($user)->create();
+        $originalPages = $this->measuredPages(3);
+        $export = LetterExport::factory()->for($letter)->create([
+            'status' => LetterExportStatus::READY,
+            'pages' => $originalPages,
+            'page_count' => count($originalPages),
+        ]);
+        $originalManifest = $export->getRawOriginal('pages');
+        $pages = $originalPages;
+        $pages[2]['text_scale'] = 0.85;
+        $pages[2]['text_scale_mode'] = 'manual';
+        Passport::actingAs($user);
+
+        $this->patchJson(route('letters.exports.update', [$letter->uuid, $export->uuid]), [
+            'pages' => $pages,
+        ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['pages.2.text_scale', 'pages.2.text_scale_mode']);
+
+        $this->assertSame($originalManifest, $export->fresh()->getRawOriginal('pages'));
     }
 
     public function test_export_page_text_scale_must_stay_within_the_supported_range(): void

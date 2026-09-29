@@ -91,6 +91,8 @@ class StoreLetterExportRequest extends FormRequest
                         );
                     }
                 }
+
+                SharedLetterPageTextScale::validate($validator, $pages);
             },
         ];
     }

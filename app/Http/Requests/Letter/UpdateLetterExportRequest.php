@@ -98,6 +98,8 @@ class UpdateLetterExportRequest extends FormRequest
                         );
                     }
                 }
+
+                SharedLetterPageTextScale::validate($validator, $pages);
             },
         ];
     }

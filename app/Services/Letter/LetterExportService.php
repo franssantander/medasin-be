@@ -161,9 +161,11 @@ class LetterExportService
         array $defaultCover,
     ): array {
         $lastIndex = array_key_last($pages);
+        $sharedTextScale = (float) ($pages[1]['text_scale'] ?? 1);
+        $sharedTextScaleMode = $pages[1]['text_scale_mode'] ?? 'auto';
 
         return array_map(
-            function (array $page, int $index) use ($lastIndex, $signature, $truncatedPage, $defaultCover): array {
+            function (array $page, int $index) use ($lastIndex, $signature, $truncatedPage, $defaultCover, $sharedTextScale, $sharedTextScaleMode): array {
                 $isCover = $index === 0;
                 $isFinal = $index === $lastIndex;
                 $normalizedCover = $isCover
@@ -175,8 +177,8 @@ class LetterExportService
                     'number' => $index + 1,
                     'kind' => $isCover ? 'cover' : ($isFinal ? 'final' : 'body'),
                     'layout' => $page['layout'],
-                    'text_scale' => (float) ($page['text_scale'] ?? 1),
-                    'text_scale_mode' => $page['text_scale_mode'] ?? 'auto',
+                    'text_scale' => $isCover ? (float) ($page['text_scale'] ?? 1) : $sharedTextScale,
+                    'text_scale_mode' => $isCover ? ($page['text_scale_mode'] ?? 'auto') : $sharedTextScaleMode,
                     'title' => $isCover ? ($page['title'] ?? null) : null,
                     'subtitle' => $isCover
                         ? (Str::limit($this->content->textForBlocks($normalizedCover['description_blocks']), 240, '') ?: null)
