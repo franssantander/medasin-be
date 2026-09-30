@@ -1,18 +1,22 @@
 <?php
 
-require __DIR__.'/v1/auth.php';
-require __DIR__.'/v1/home.php';
-require __DIR__.'/v1/plan.php';
-require __DIR__.'/v1/calendar.php';
-require __DIR__.'/v1/notification.php';
-require __DIR__.'/v1/area.php';
-require __DIR__.'/v1/note.php';
-require __DIR__.'/v1/project.php';
-require __DIR__.'/v1/board.php';
-require __DIR__.'/v1/resource.php';
-require __DIR__.'/v1/trash.php';
-require __DIR__.'/v1/focus.php';
-require __DIR__.'/v1/habit.php';
-require __DIR__.'/v1/journal.php';
-require __DIR__.'/v1/letter.php';
-require __DIR__.'/v1/search.php';
+use Illuminate\Support\Facades\Route;
+
+Route::middleware('throttle:api')->group(function (): void {
+    require __DIR__.'/v1/auth.php';
+    require __DIR__.'/v1/home.php';
+    require __DIR__.'/v1/plan.php';
+    require __DIR__.'/v1/calendar.php';
+    require __DIR__.'/v1/notification.php';
+    require __DIR__.'/v1/area.php';
+    require __DIR__.'/v1/note.php';
+    require __DIR__.'/v1/project.php';
+    require __DIR__.'/v1/board.php';
+    require __DIR__.'/v1/resource.php';
+    require __DIR__.'/v1/trash.php';
+    require __DIR__.'/v1/focus.php';
+    require __DIR__.'/v1/habit.php';
+    require __DIR__.'/v1/journal.php';
+    require __DIR__.'/v1/letter.php';
+    require __DIR__.'/v1/search.php';
+});

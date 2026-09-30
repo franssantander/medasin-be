@@ -13,9 +13,12 @@ use App\Models\User;
 use App\Services\Board\BoardService;
 use App\Services\Board\BoardTaskService;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 
 class DemoUserSeeder extends Seeder
 {
+    private const DEMO_USER_EMAIL = 'test@example.com';
+
     private const PROJECT_BADGE_BACKGROUND = '#000000';
 
     /**
@@ -23,17 +26,23 @@ class DemoUserSeeder extends Seeder
      */
     public function run(): void
     {
-        User::factory(10)->create();
+        if (User::query()->where('email', self::DEMO_USER_EMAIL)->exists()) {
+            return;
+        }
 
-        $testUser = User::factory()->create([
-            'first_name' => 'John',
-            'last_name' => 'Doe',
-            'username' => 'testuser',
-            'email' => 'test@example.com',
-        ]);
+        DB::transaction(function (): void {
+            User::factory(10)->create();
 
-        $this->callWith(AreaSeeder::class, ['user' => $testUser]);
-        $this->seedAreaInterconnections($testUser);
+            $testUser = User::factory()->create([
+                'first_name' => 'John',
+                'last_name' => 'Doe',
+                'username' => 'testuser',
+                'email' => self::DEMO_USER_EMAIL,
+            ]);
+
+            $this->callWith(AreaSeeder::class, ['user' => $testUser]);
+            $this->seedAreaInterconnections($testUser);
+        });
     }
 
     private function seedAreaInterconnections(User $user): void

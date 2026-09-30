@@ -1,16 +1,20 @@
 #!/bin/sh
 set -e
 
-composer install
+composer install --no-interaction
 
-if [ "$RUN_MIGRATIONS" = "true" ]; then
-    if [ "$AUTO_FRESH_SEED" = "true" ]; then
-        echo "Running migrate:fresh --seed..."
-        php artisan migrate:fresh --seed
-    else
-        echo "Running migrate..."
-        php artisan migrate
-    fi
+if [ "${RUN_MIGRATIONS:-false}" = "true" ]; then
+    echo "Running pending migrations..."
+    php artisan migrate --force --no-interaction
+else
+    echo "Skipping migrations (RUN_MIGRATIONS is disabled)."
+fi
+
+if [ "${RUN_SEEDERS:-false}" = "true" ]; then
+    echo "Running database seeders..."
+    php artisan db:seed --force --no-interaction
+else
+    echo "Skipping seeders (RUN_SEEDERS is disabled)."
 fi
 
 exec "$@"

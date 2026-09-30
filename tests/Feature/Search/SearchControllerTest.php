@@ -256,13 +256,14 @@ class SearchControllerTest extends TestCase
 
     public function test_returns_429_after_search_rate_limit(): void
     {
+        $this->freezeTime();
         Passport::actingAs(User::factory()->create());
-        for ($request = 0; $request < 60; $request++) {
+        for ($request = 0; $request < 30; $request++) {
             $this->getJson(route('search.index', ['q' => 'orbit', 'type' => 'project']))->assertOk();
         }
 
         $this->getJson(route('search.index', ['q' => 'orbit', 'type' => 'project']))
-            ->assertStatus(429)->assertJsonPath('status', 429);
+            ->assertTooManyRequests()->assertJsonPath('status', 429);
     }
 
     /** @return array<string, string> */

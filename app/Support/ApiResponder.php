@@ -111,6 +111,10 @@ class ApiResponder
             ];
         }
 
-        return response()->json($payload, $status);
+        return response()->json(
+            $payload,
+            $status,
+            $exception instanceof HttpException ? $exception->getHeaders() : [],
+        );
     }
 }
