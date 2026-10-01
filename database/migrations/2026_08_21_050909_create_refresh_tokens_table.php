@@ -16,6 +16,7 @@ return new class extends Migration
             $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
             $table->char('access_token_id', 80)->nullable()->index();
             $table->string('token', 64)->unique();
+            $table->boolean('remember_me')->default(true);
             $table->timestamp('expires_at');
             $table->timestamp('revoked_at')->nullable();
             $table->timestamps();

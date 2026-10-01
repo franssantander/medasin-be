@@ -25,9 +25,9 @@ class TokenService
      *
      * @return array{0: CookieObject, 1: CookieObject}
      */
-    public function issue(User $user): array
+    public function issue(User $user, bool $rememberMe = true): array
     {
-        return DB::transaction(function () use ($user): array {
+        return DB::transaction(function () use ($user, $rememberMe): array {
             $user = User::query()->lockForUpdate()->findOrFail($user->id);
 
             if (! $user->hasVerifiedEmail()) {
@@ -42,11 +42,12 @@ class TokenService
                 'access_token_id' => $tokenResult->token->id,
                 'token' => hash('sha256', $plainRefreshToken),
                 'expires_at' => now()->addDays($this->refreshTokenDays),
+                'remember_me' => $rememberMe,
             ]);
 
             return [
-                $this->makeCookie($this->accessCookieName, $tokenResult->accessToken, $this->accessTokenDays, '/'),
-                $this->makeCookie($this->refreshCookieName, $plainRefreshToken, $this->refreshTokenDays, '/api/v1/auth'),
+                $this->makeCookie($this->accessCookieName, $tokenResult->accessToken, $rememberMe ? $this->accessTokenDays : 0, '/'),
+                $this->makeCookie($this->refreshCookieName, $plainRefreshToken, $rememberMe ? $this->refreshTokenDays : 0, '/api/v1/auth'),
             ];
         });
     }
@@ -90,7 +91,7 @@ class TokenService
             $accessToken?->refreshToken()->update(['revoked' => true]);
             $accessToken?->revoke();
 
-            return [$user, ...$this->issue($user)];
+            return [$user, ...$this->issue($user, $refreshToken->remember_me)];
         });
     }
 

@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Notifications\AuthOtpNotification;
 use App\Services\Auth\TokenService;
 use DateInterval;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Laravel\Passport\Passport;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -157,6 +158,136 @@ class AuthAccessTest extends AuthTestCase
         $this->forgetAuthenticatedUser();
         $this->withUnencryptedCookie('auth_token', $response->getCookie('auth_token', false)->getValue())
             ->getJson(route('auth.me'))->assertOk()->assertJsonPath('data.id', $user->id);
+    }
+
+    #[DataProvider('rememberMePreferences')]
+    public function test_login_uses_the_requested_cookie_persistence_or_the_legacy_default(
+        array $preference,
+        bool $rememberMe,
+        int $accessLifetime,
+        int $refreshLifetime,
+    ): void {
+        $this->freezeSecond();
+        $this->createPassportClient();
+        $user = User::factory()->create();
+
+        $response = $this->postJson(route('auth.login'), [
+            'username' => $user->username,
+            'password' => 'password',
+            ...$preference,
+        ])->assertOk()->assertPlainCookie('auth_token')->assertPlainCookie('refresh_token');
+
+        $access = $response->getCookie('auth_token', false);
+        $refresh = $response->getCookie('refresh_token', false);
+        $this->assertSame($accessLifetime ? now()->timestamp + $accessLifetime : 0, $access->getExpiresTime());
+        $this->assertSame($refreshLifetime ? now()->timestamp + $refreshLifetime : 0, $refresh->getExpiresTime());
+        $this->assertTrue($access->isHttpOnly());
+        $this->assertTrue($refresh->isHttpOnly());
+        $this->assertSame('/', $access->getPath());
+        $this->assertSame('/api/v1/auth', $refresh->getPath());
+        $this->assertSame('strict', $access->getSameSite());
+        $this->assertSame('strict', $refresh->getSameSite());
+        $stored = RefreshToken::where('user_id', $user->id)->sole();
+        $this->assertSame($rememberMe, $stored->remember_me);
+        $this->assertTrue($stored->expires_at->equalTo(now()->addDays(30)));
+        $this->assertDatabaseCount('oauth_access_tokens', 1);
+    }
+
+    /** @return array<string, array{array<string, bool>, bool, int, int}> */
+    public static function rememberMePreferences(): array
+    {
+        return [
+            'legacy default' => [[], true, 604800, 2592000],
+            'browser session' => [['remember_me' => false], false, 0, 0],
+            'remembered' => [['remember_me' => true], true, 604800, 2592000],
+        ];
+    }
+
+    #[DataProvider('invalidRememberMeValues')]
+    public function test_returns_422_for_invalid_login_remember_me_without_issuing_tokens(mixed $preference): void
+    {
+        $user = User::factory()->create();
+
+        $this->postJson(route('auth.login'), [
+            'username' => $user->username,
+            'password' => 'password',
+            'remember_me' => $preference,
+        ])->assertUnprocessable()->assertJsonValidationErrors('remember_me')
+            ->assertCookieMissing('auth_token')->assertCookieMissing('refresh_token');
+
+        $this->assertDatabaseCount('oauth_access_tokens', 0);
+        $this->assertDatabaseCount('refresh_tokens', 0);
+    }
+
+    /** @return array<string, array{mixed}> */
+    public static function invalidRememberMeValues(): array
+    {
+        return [
+            'null' => [null],
+            'text' => ['yes'],
+            'boolean text' => ['false'],
+            'array' => [[true]],
+            'invalid number' => [2],
+        ];
+    }
+
+    #[DataProvider('rotationPreferences')]
+    public function test_refresh_preserves_saved_persistence_and_ignores_the_request_preference(
+        bool $rememberMe,
+        int $accessLifetime,
+        int $refreshLifetime,
+    ): void {
+        $this->freezeSecond();
+        $this->createPassportClient();
+        $user = User::factory()->create();
+        [, $originalCookie] = app(TokenService::class)->issue($user, $rememberMe);
+        $original = RefreshToken::where('user_id', $user->id)->sole();
+        $this->travel(1)->days();
+
+        $response = $this->withUnencryptedCookie('refresh_token', $originalCookie->getValue())
+            ->postJson(route('auth.refresh'), ['remember_me' => ! $rememberMe])
+            ->assertOk()->assertPlainCookie('auth_token')->assertPlainCookie('refresh_token');
+
+        $this->assertSame($accessLifetime ? now()->timestamp + $accessLifetime : 0, $response->getCookie('auth_token', false)->getExpiresTime());
+        $this->assertSame($refreshLifetime ? now()->timestamp + $refreshLifetime : 0, $response->getCookie('refresh_token', false)->getExpiresTime());
+        $current = RefreshToken::where('user_id', $user->id)->whereNull('revoked_at')->sole();
+        $this->assertSame($rememberMe, $current->remember_me);
+        $this->assertTrue($current->expires_at->equalTo(now()->addDays(30)));
+        $this->assertNotNull($original->fresh()->revoked_at);
+        $this->assertSame(1, $user->tokens()->where('revoked', false)->count());
+        $this->assertSame(1, $user->tokens()->where('revoked', true)->count());
+    }
+
+    /** @return array<string, array{bool, int, int}> */
+    public static function rotationPreferences(): array
+    {
+        return [
+            'session remains session' => [false, 0, 0],
+            'remembered remains remembered' => [true, 604800, 2592000],
+        ];
+    }
+
+    public function test_refresh_tokens_without_a_persistence_preference_default_to_persistent_cookies(): void
+    {
+        $this->freezeSecond();
+        $this->createPassportClient();
+        $user = User::factory()->create();
+        DB::table('refresh_tokens')->insert([
+            'user_id' => $user->id,
+            'access_token_id' => null,
+            'token' => hash('sha256', 'legacy-refresh-token'),
+            'expires_at' => now()->addDays(30),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $original = RefreshToken::where('user_id', $user->id)->sole();
+        $this->assertTrue($original->remember_me);
+        $response = $this->withUnencryptedCookie('refresh_token', 'legacy-refresh-token')
+            ->postJson(route('auth.refresh'))->assertOk()->assertPlainCookie('refresh_token');
+        $this->assertSame(now()->timestamp + 2592000, $response->getCookie('refresh_token', false)->getExpiresTime());
+        $this->assertTrue(RefreshToken::where('user_id', $user->id)->whereNull('revoked_at')->sole()->remember_me);
+        $this->assertNotNull($original->fresh()->revoked_at);
     }
 
     #[DataProvider('protectedEndpoints')]

@@ -4,6 +4,7 @@ namespace Tests\Feature\Auth;
 
 use App\Enum\AuthOtpPurpose;
 use App\Models\AuthOtp;
+use App\Models\RefreshToken;
 use App\Models\User;
 use App\Notifications\AuthOtpNotification;
 use Illuminate\Auth\Events\Verified;
@@ -51,6 +52,73 @@ class EmailVerificationTest extends AuthTestCase
         $this->forgetAuthenticatedUser();
         $this->withUnencryptedCookie('auth_token', $accessCookie->getValue())
             ->getJson(route('auth.me'))->assertOk()->assertJsonPath('data.id', $user->id);
+    }
+
+    #[DataProvider('verificationRememberMePreferences')]
+    public function test_email_verification_uses_the_login_persistence_choice_or_the_legacy_default(
+        array $preference,
+        bool $rememberMe,
+        int $accessLifetime,
+        int $refreshLifetime,
+    ): void {
+        $this->freezeSecond();
+        $this->createPassportClient();
+        Notification::fake();
+        $user = User::factory()->unverified()->create();
+        $this->postJson(route('auth.resend-verification'), ['email' => $user->email])->assertAccepted();
+        $code = $this->latestOtp($user, AuthOtpPurpose::EMAIL_VERIFICATION)->code;
+        $this->postJson(route('auth.login'), [
+            'username' => $user->username,
+            'password' => 'password',
+            ...$preference,
+        ])->assertUnprocessable()->assertJsonPath('code', 'EMAIL_VERIFICATION_REQUIRED')
+            ->assertCookieMissing('auth_token')->assertCookieMissing('refresh_token');
+
+        $response = $this->postJson(route('auth.verify-email'), [
+            'email' => $user->email,
+            'otp' => $code,
+            ...$preference,
+        ])->assertOk()->assertPlainCookie('auth_token')->assertPlainCookie('refresh_token');
+
+        $this->assertSame($accessLifetime ? now()->timestamp + $accessLifetime : 0, $response->getCookie('auth_token', false)->getExpiresTime());
+        $this->assertSame($refreshLifetime ? now()->timestamp + $refreshLifetime : 0, $response->getCookie('refresh_token', false)->getExpiresTime());
+        $this->assertSame($rememberMe, RefreshToken::where('user_id', $user->id)->sole()->remember_me);
+        $this->assertTrue($user->fresh()->hasVerifiedEmail());
+        $this->assertDatabaseCount('oauth_access_tokens', 1);
+        Notification::assertSentToTimes($user, AuthOtpNotification::class, 1);
+    }
+
+    /** @return array<string, array{array<string, bool>, bool, int, int}> */
+    public static function verificationRememberMePreferences(): array
+    {
+        return [
+            'legacy default' => [[], true, 604800, 2592000],
+            'browser session' => [['remember_me' => false], false, 0, 0],
+            'remembered' => [['remember_me' => true], true, 604800, 2592000],
+        ];
+    }
+
+    public function test_returns_422_for_invalid_verification_remember_me_without_consuming_the_code(): void
+    {
+        Notification::fake();
+        $user = User::factory()->unverified()->create();
+        $this->postJson(route('auth.resend-verification'), ['email' => $user->email])->assertAccepted();
+        $code = $this->latestOtp($user, AuthOtpPurpose::EMAIL_VERIFICATION)->code;
+
+        $this->postJson(route('auth.verify-email'), [
+            'email' => $user->email,
+            'otp' => $code,
+            'remember_me' => 'yes',
+        ])->assertUnprocessable()->assertJsonValidationErrors('remember_me')
+            ->assertCookieMissing('auth_token')->assertCookieMissing('refresh_token');
+
+        $challenge = AuthOtp::where('user_id', $user->id)->sole();
+        $this->assertNull($challenge->consumed_at);
+        $this->assertSame(0, $challenge->failed_attempts);
+        $this->assertFalse($user->fresh()->hasVerifiedEmail());
+        $this->assertDatabaseCount('oauth_access_tokens', 0);
+        $this->assertDatabaseCount('refresh_tokens', 0);
+        Notification::assertSentToTimes($user, AuthOtpNotification::class, 1);
     }
 
     public function test_returns_422_for_replayed_email_otp_without_issuing_another_session(): void

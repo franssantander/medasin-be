@@ -60,9 +60,9 @@ class AuthService
     /**
      * @return array{0: User, 1: Cookie, 2: Cookie}|array{email: string, verification_required: true, otp_expires_in: int, resend_after: int}
      */
-    public function login(string $username, #[\SensitiveParameter] string $password): array
+    public function login(string $username, #[\SensitiveParameter] string $password, bool $rememberMe = true): array
     {
-        return DB::transaction(function () use ($username, $password): array {
+        return DB::transaction(function () use ($username, $password, $rememberMe): array {
             $user = User::query()->where('username', $username)->lockForUpdate()->first();
 
             if (! $user || ! Hash::check($password, $user->password)) {
@@ -79,16 +79,16 @@ class AuthService
                 $user->forceFill(['password' => Hash::make($password)])->save();
             }
 
-            return [$user, ...$this->tokenService->issue($user)];
+            return [$user, ...$this->tokenService->issue($user, $rememberMe)];
         });
     }
 
     /**
      * @return array{0: User, 1: Cookie, 2: Cookie}
      */
-    public function verifyEmail(string $email, #[\SensitiveParameter] string $code): array
+    public function verifyEmail(string $email, #[\SensitiveParameter] string $code, bool $rememberMe = true): array
     {
-        $result = DB::transaction(function () use ($email, $code): ?array {
+        $result = DB::transaction(function () use ($email, $code, $rememberMe): ?array {
             $user = User::query()->where('email', $email)->lockForUpdate()->first();
 
             if (! $user || $user->hasVerifiedEmail() || ! $this->otpService->consume($user, AuthOtpPurpose::EMAIL_VERIFICATION, $code)) {
@@ -98,7 +98,7 @@ class AuthService
             $user->markEmailAsVerified();
             event(new Verified($user));
 
-            return [$user, ...$this->tokenService->issue($user)];
+            return [$user, ...$this->tokenService->issue($user, $rememberMe)];
         });
 
         if (! $result) {

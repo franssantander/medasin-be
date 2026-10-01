@@ -6,13 +6,14 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['user_id', 'access_token_id', 'token', 'expires_at', 'revoked_at'])]
+#[Fillable(['user_id', 'access_token_id', 'token', 'expires_at', 'revoked_at', 'remember_me'])]
 class RefreshToken extends Model
 {
     protected function casts(): array
     {
         return [
             'user_id' => 'integer',
+            'remember_me' => 'boolean',
             'expires_at' => 'datetime',
             'revoked_at' => 'datetime',
         ];
