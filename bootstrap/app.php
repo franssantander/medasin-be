@@ -1,7 +1,9 @@
 <?php
 
 use App\Http\Middleware\AuthenticateFromCookie;
+use App\Http\Middleware\EnsureApiEmailIsVerified;
 use App\Support\ApiResponder;
+use Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -17,12 +19,16 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withBroadcasting(
         __DIR__.'/../routes/channels.php',
-        ['prefix' => 'api/v1', 'middleware' => ['api', 'auth:api']],
+        ['prefix' => 'api/v1', 'middleware' => ['api', 'auth:api', 'verified.api']],
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->api(prepend: [
             AuthenticateFromCookie::class,
         ]);
+        $middleware->alias([
+            'verified.api' => EnsureApiEmailIsVerified::class,
+        ]);
+        $middleware->appendToPriorityList(AuthenticatesRequests::class, EnsureApiEmailIsVerified::class);
         $middleware->trustProxies(at: '*');
         $middleware->trimStrings(except: ['pages.*.cover.hero_image_caption']);
         $middleware->redirectGuestsTo(fn () => null);

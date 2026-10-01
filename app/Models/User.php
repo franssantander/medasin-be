@@ -2,9 +2,10 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
-
+use App\Enum\AuthOtpPurpose;
 use App\Models\Concerns\HasUuid;
+use App\Services\Auth\AuthOtpService;
+use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -12,13 +13,19 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Passport\Contracts\OAuthenticatable;
 use Laravel\Passport\HasApiTokens;
 
 #[Fillable(['first_name', 'last_name', 'email', 'username', 'status', 'password'])]
 #[Hidden(['password', 'remember_token'])]
-class User extends Authenticatable
+class User extends Authenticatable implements MustVerifyEmail, OAuthenticatable
 {
     use HasApiTokens, HasFactory, HasUuid, Notifiable;
+
+    public function sendEmailVerificationNotification(): void
+    {
+        app(AuthOtpService::class)->send($this, AuthOtpPurpose::EMAIL_VERIFICATION);
+    }
 
     /**
      * Get the attributes that should be cast.

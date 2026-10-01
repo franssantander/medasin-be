@@ -5,7 +5,9 @@ namespace App\Services\Auth;
 use App\Models\RefreshToken;
 use App\Models\User;
 use Illuminate\Support\Facades\Cookie;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Laravel\Passport\Passport;
 use Symfony\Component\HttpFoundation\Cookie as CookieObject;
 
 class TokenService
@@ -25,20 +27,28 @@ class TokenService
      */
     public function issue(User $user): array
     {
-        $tokenResult = $user->createToken('auth_token');
-        $plainRefreshToken = Str::random(64);
+        return DB::transaction(function () use ($user): array {
+            $user = User::query()->lockForUpdate()->findOrFail($user->id);
 
-        RefreshToken::create([
-            'user_id' => $user->id,
-            'access_token_id' => $tokenResult->token->id,
-            'token' => hash('sha256', $plainRefreshToken),
-            'expires_at' => now()->addDays($this->refreshTokenDays),
-        ]);
+            if (! $user->hasVerifiedEmail()) {
+                abort(403, 'Please verify your email address before accessing the app.');
+            }
 
-        return [
-            $this->makeCookie($this->accessCookieName, $tokenResult->accessToken, $this->accessTokenDays, '/'),
-            $this->makeCookie($this->refreshCookieName, $plainRefreshToken, $this->refreshTokenDays, '/api/v1/auth'),
-        ];
+            $tokenResult = $user->createToken('auth_token');
+            $plainRefreshToken = Str::random(64);
+
+            RefreshToken::create([
+                'user_id' => $user->id,
+                'access_token_id' => $tokenResult->token->id,
+                'token' => hash('sha256', $plainRefreshToken),
+                'expires_at' => now()->addDays($this->refreshTokenDays),
+            ]);
+
+            return [
+                $this->makeCookie($this->accessCookieName, $tokenResult->accessToken, $this->accessTokenDays, '/'),
+                $this->makeCookie($this->refreshCookieName, $plainRefreshToken, $this->refreshTokenDays, '/api/v1/auth'),
+            ];
+        });
     }
 
     /**
@@ -47,41 +57,85 @@ class TokenService
      *
      * @return array{0: User, 1: CookieObject, 2: CookieObject}|null
      */
-    public function rotate(string $plainRefreshToken): ?array
+    public function rotate(#[\SensitiveParameter] string $plainRefreshToken): ?array
     {
-        $refreshToken = RefreshToken::whereNull('revoked_at')
-            ->where('expires_at', '>', now())
-            ->where('token', hash('sha256', $plainRefreshToken))
-            ->first();
+        $tokenHash = hash('sha256', $plainRefreshToken);
+        $userId = RefreshToken::query()->where('token', $tokenHash)->value('user_id');
 
-        if (! $refreshToken || ! $refreshToken->user) {
+        if (! $userId) {
             return null;
         }
 
-        $user = $refreshToken->user;
+        return DB::transaction(function () use ($userId, $tokenHash): ?array {
+            $user = User::query()->lockForUpdate()->find($userId);
 
-        $refreshToken->update(['revoked_at' => now()]);
-        $user->tokens()->find($refreshToken->access_token_id)?->revoke();
+            if (! $user || ! $user->hasVerifiedEmail()) {
+                return null;
+            }
 
-        return [$user, ...$this->issue($user)];
+            $refreshToken = RefreshToken::query()
+                ->where('user_id', $user->id)
+                ->where('token', $tokenHash)
+                ->whereNull('revoked_at')
+                ->where('expires_at', '>', now())
+                ->lockForUpdate()
+                ->first();
+
+            if (! $refreshToken) {
+                return null;
+            }
+
+            $refreshToken->update(['revoked_at' => now()]);
+            $accessToken = $user->tokens()->find($refreshToken->access_token_id);
+            $accessToken?->refreshToken()->update(['revoked' => true]);
+            $accessToken?->revoke();
+
+            return [$user, ...$this->issue($user)];
+        });
     }
 
     /**
-     * Revoke the refresh token(s) tied to the given access token id (used on logout).
+     * Revoke an access token and its refresh tokens (used on logout).
      */
-    public function revokeForAccessToken(string $accessTokenId): void
+    public function revokeForAccessToken(User $user, string $accessTokenId): void
     {
-        RefreshToken::whereNull('revoked_at')
-            ->where('access_token_id', $accessTokenId)
-            ->update(['revoked_at' => now()]);
+        DB::transaction(function () use ($user, $accessTokenId): void {
+            $user = User::query()->lockForUpdate()->find($user->id);
+
+            if (! $user) {
+                return;
+            }
+
+            $accessToken = $user->tokens()->find($accessTokenId);
+            $accessToken?->refreshToken()->update(['revoked' => true]);
+            $accessToken?->revoke();
+            RefreshToken::query()->where('user_id', $user->id)
+                ->where('access_token_id', $accessTokenId)
+                ->whereNull('revoked_at')
+                ->update(['revoked_at' => now()]);
+        });
     }
 
     /**
-     * Revoke every outstanding refresh token for a user (used on password reset).
+     * Revoke every access and refresh token for a user (used on password reset).
      */
     public function revokeAllForUser(User $user): void
     {
-        RefreshToken::where('user_id', $user->id)->delete();
+        DB::transaction(function () use ($user): void {
+            $user = User::query()->lockForUpdate()->find($user->id);
+
+            if (! $user) {
+                return;
+            }
+
+            $tokenIds = $user->tokens()->pluck('id');
+            Passport::refreshToken()->newQuery()
+                ->whereIn('access_token_id', $tokenIds)
+                ->update(['revoked' => true]);
+            $user->tokens()->update(['revoked' => true]);
+            RefreshToken::query()->where('user_id', $user->id)->whereNull('revoked_at')
+                ->update(['revoked_at' => now()]);
+        });
     }
 
     public function forgetCookies(): array
