@@ -8,6 +8,7 @@ use App\Data\Resource\StoreResourceData;
 use App\Models\Resource;
 use App\Models\ResourceTag;
 use App\Models\User;
+use App\Services\Profile\FileCleanupService;
 use App\Services\Search\SearchText;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -16,6 +17,10 @@ use Throwable;
 
 class ResourceService
 {
+    public function __construct(
+        private readonly FileCleanupService $fileCleanup,
+    ) {}
+
     public function tags(User $user): array
     {
         return ResourceTag::query()->where('user_id', $user->id)->orderBy('normalized_name')->get(['uuid', 'name'])->toArray();
@@ -71,59 +76,61 @@ class ResourceService
 
     public function create(User $user, StoreResourceData $data): array
     {
-        $paths = [];
+        return DB::transaction(function () use ($user, $data): array {
+            $user = User::query()->lockForUpdate()->findOrFail($user->getKey());
+            $resource = $user->resources()->create([
+                'title' => $data->title,
+                'icon' => $data->icon,
+                'background' => $data->background,
+                'content' => $data->content,
+                'content_text' => SearchText::fromDocument($data->content),
+            ]);
 
-        try {
-            return DB::transaction(function () use ($user, $data, &$paths) {
-                $resource = $user->resources()->create([
-                    'title' => $data->title,
-                    'icon' => $data->icon,
-                    'background' => $data->background,
-                    'content' => $data->content,
-                    'content_text' => SearchText::fromDocument($data->content),
-                ]);
+            foreach ($data->links as $url) {
+                $resource->attachments()->create(['kind' => 'link', 'url' => $url]);
+            }
 
-                foreach ($data->links as $url) {
-                    $resource->attachments()->create(['kind' => 'link', 'url' => $url]);
-                }
-
-                foreach ($data->files as $file) {
-                    $path = $file->store("resources/{$resource->uuid}", 'local');
-                    if ($path === false) {
-                        throw new RuntimeException('Unable to store resource attachment.');
+            foreach ($data->files as $file) {
+                $directory = "resources/{$resource->uuid}";
+                $filename = $file->hashName();
+                $path = "{$directory}/{$filename}";
+                DB::afterRollBack(function () use ($path): void {
+                    try {
+                        $this->fileCleanup->deleteOrQueue(['local' => [$path]]);
+                    } catch (Throwable $exception) {
+                        report($exception);
                     }
-                    $paths[] = $path;
-                    $mime = $file->getMimeType() ?: 'application/octet-stream';
-                    $resource->attachments()->create([
-                        'kind' => in_array($mime, ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], true) ? 'image' : 'file',
-                        'path' => $path,
-                        'original_name' => mb_substr(basename($file->getClientOriginalName()), 0, 255),
-                        'mime_type' => $mime,
-                        'size' => $file->getSize(),
-                    ]);
+                });
+                if ($file->storeAs($directory, $filename, 'local') === false) {
+                    throw new RuntimeException('Unable to store resource attachment.');
                 }
+                $mime = $file->getMimeType() ?: 'application/octet-stream';
+                $resource->attachments()->create([
+                    'kind' => in_array($mime, ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], true) ? 'image' : 'file',
+                    'path' => $path,
+                    'original_name' => mb_substr(basename($file->getClientOriginalName()), 0, 255),
+                    'mime_type' => $mime,
+                    'size' => $file->getSize(),
+                ]);
+            }
 
-                $tagIds = ResourceTag::query()->where('user_id', $user->id)->whereIn('uuid', $data->tag_uuids)->pluck('id')->all();
-                foreach ($data->tag_names as $name) {
-                    $name = trim($name);
-                    $tagIds[] = ResourceTag::firstOrCreate([
-                        'user_id' => $user->id,
-                        'normalized_name' => mb_strtolower($name),
-                    ], ['name' => $name])->id;
-                }
-                $resource->tags()->sync(array_unique($tagIds));
+            $tagIds = ResourceTag::query()->where('user_id', $user->id)->whereIn('uuid', $data->tag_uuids)->pluck('id')->all();
+            foreach ($data->tag_names as $name) {
+                $name = trim($name);
+                $tagIds[] = ResourceTag::firstOrCreate([
+                    'user_id' => $user->id,
+                    'normalized_name' => mb_strtolower($name),
+                ], ['name' => $name])->id;
+            }
+            $resource->tags()->sync(array_unique($tagIds));
 
-                $projectIds = $user->projects()->whereIn('uuid', $data->project_uuids)->pluck('id')->all();
-                $areaIds = $user->areas()->whereIn('uuid', $data->area_uuids)->pluck('id')->all();
-                $resource->projects()->sync($projectIds);
-                $resource->areas()->sync($areaIds);
+            $projectIds = $user->projects()->whereIn('uuid', $data->project_uuids)->pluck('id')->all();
+            $areaIds = $user->areas()->whereIn('uuid', $data->area_uuids)->pluck('id')->all();
+            $resource->projects()->sync($projectIds);
+            $resource->areas()->sync($areaIds);
 
-                return $this->serialize($resource->fresh(['attachments', 'tags', 'projects', 'areas']));
-            });
-        } catch (Throwable $exception) {
-            Storage::disk('local')->delete($paths);
-            throw $exception;
-        }
+            return $this->serialize($resource->fresh(['attachments', 'tags', 'projects', 'areas']));
+        });
     }
 
     public function update(User $user, Resource $resource, array $data): array
@@ -174,34 +181,39 @@ class ResourceService
 
     public function addAttachments(Resource $resource, array $links, array $files): array
     {
-        $paths = [];
-        try {
-            DB::transaction(function () use ($resource, $links, $files, &$paths) {
-                foreach ($links as $url) {
-                    $resource->attachments()->create(['kind' => 'link', 'url' => $url]);
-                }
-                foreach ($files as $file) {
-                    $path = $file->store("resources/{$resource->uuid}", 'local');
-                    if ($path === false) {
-                        throw new RuntimeException('Unable to store resource attachment.');
-                    }
-                    $paths[] = $path;
-                    $mime = $file->getMimeType() ?: 'application/octet-stream';
-                    $resource->attachments()->create([
-                        'kind' => in_array($mime, ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], true) ? 'image' : 'file',
-                        'path' => $path,
-                        'original_name' => mb_substr(basename($file->getClientOriginalName()), 0, 255),
-                        'mime_type' => $mime,
-                        'size' => $file->getSize(),
-                    ]);
-                }
-            });
-        } catch (Throwable $exception) {
-            Storage::disk('local')->delete($paths);
-            throw $exception;
-        }
+        return DB::transaction(function () use ($resource, $links, $files): array {
+            $user = User::query()->lockForUpdate()->findOrFail($resource->user_id);
+            $resource = $user->resources()->whereKey($resource->getKey())->firstOrFail();
 
-        return $this->serialize($resource->fresh(['attachments', 'tags', 'projects', 'areas']));
+            foreach ($links as $url) {
+                $resource->attachments()->create(['kind' => 'link', 'url' => $url]);
+            }
+            foreach ($files as $file) {
+                $directory = "resources/{$resource->uuid}";
+                $filename = $file->hashName();
+                $path = "{$directory}/{$filename}";
+                DB::afterRollBack(function () use ($path): void {
+                    try {
+                        $this->fileCleanup->deleteOrQueue(['local' => [$path]]);
+                    } catch (Throwable $exception) {
+                        report($exception);
+                    }
+                });
+                if ($file->storeAs($directory, $filename, 'local') === false) {
+                    throw new RuntimeException('Unable to store resource attachment.');
+                }
+                $mime = $file->getMimeType() ?: 'application/octet-stream';
+                $resource->attachments()->create([
+                    'kind' => in_array($mime, ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], true) ? 'image' : 'file',
+                    'path' => $path,
+                    'original_name' => mb_substr(basename($file->getClientOriginalName()), 0, 255),
+                    'mime_type' => $mime,
+                    'size' => $file->getSize(),
+                ]);
+            }
+
+            return $this->serialize($resource->fresh(['attachments', 'tags', 'projects', 'areas']));
+        });
     }
 
     public function deleteAttachment(Resource $resource, string $uuid): array

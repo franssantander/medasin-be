@@ -8,12 +8,16 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Area\StoreAreaRequest;
 use App\Http\Requests\Area\UpdateAreaRequest;
 use App\Models\Area;
+use App\Models\User;
 use App\Services\Area\AreaService;
+use App\Services\Profile\FileCleanupService;
 use App\Services\Trash\TrashService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use RuntimeException;
+use Throwable;
 
 class AreaController extends Controller
 {
@@ -22,6 +26,7 @@ class AreaController extends Controller
     public function __construct(
         private readonly AreaService $areaService,
         private readonly TrashService $trashService,
+        private readonly FileCleanupService $fileCleanup,
     ) {}
 
     /**
@@ -61,13 +66,28 @@ class AreaController extends Controller
     {
         $attributes = AreaData::from(Arr::except($request->validated(), ['background_image']))->toArray();
 
-        if ($request->hasFile('background_image')) {
-            $attributes['background_image'] = $request->file('background_image')->store('areas/backgrounds', 'public');
-        }
+        $data = DB::transaction(function () use ($request, $attributes): Area {
+            $user = User::query()->lockForUpdate()->findOrFail($request->user()->getKey());
 
-        $data = $request->user()
-            ->areas()
-            ->create($attributes);
+            if ($request->hasFile('background_image')) {
+                $image = $request->file('background_image');
+                $filename = $image->hashName();
+                $path = "areas/backgrounds/{$filename}";
+                DB::afterRollBack(function () use ($path): void {
+                    try {
+                        $this->fileCleanup->deleteOrQueue(['public' => [$path]]);
+                    } catch (Throwable $exception) {
+                        report($exception);
+                    }
+                });
+                if ($image->storeAs('areas/backgrounds', $filename, 'public') === false) {
+                    throw new RuntimeException('Unable to store area background image.');
+                }
+                $attributes['background_image'] = $path;
+            }
+
+            return $user->areas()->create($attributes);
+        });
 
         return $this->success($data, 'Successfully created area.', 201);
     }
@@ -95,22 +115,47 @@ class AreaController extends Controller
      */
     public function update(UpdateAreaRequest $request, Area $area)
     {
-        $area = $this->ownedArea($request->user(), $area);
-        $this->ensureAreaIsMutable($area);
         $attributes = AreaData::from(Arr::except($request->validated(), ['background_image']))->toArray();
 
-        if ($request->hasFile('background_image')) {
-            $previousImage = $area->background_image;
-            $attributes['background_image'] = $request->file('background_image')->store('areas/backgrounds', 'public');
+        $area = DB::transaction(function () use ($request, $area, $attributes): Area {
+            $user = User::query()->lockForUpdate()->findOrFail($request->user()->getKey());
+            $area = $this->ownedArea($user, $area);
+            $this->ensureAreaIsMutable($area);
 
-            if ($previousImage) {
-                Storage::disk('public')->delete($previousImage);
+            if ($request->hasFile('background_image')) {
+                $previousImage = $area->background_image;
+                $image = $request->file('background_image');
+                $filename = $image->hashName();
+                $path = "areas/backgrounds/{$filename}";
+                DB::afterRollBack(function () use ($path): void {
+                    try {
+                        $this->fileCleanup->deleteOrQueue(['public' => [$path]]);
+                    } catch (Throwable $exception) {
+                        report($exception);
+                    }
+                });
+                if ($image->storeAs('areas/backgrounds', $filename, 'public') === false) {
+                    throw new RuntimeException('Unable to store area background image.');
+                }
+                $attributes['background_image'] = $path;
+
+                if ($previousImage) {
+                    DB::afterCommit(function () use ($previousImage): void {
+                        try {
+                            $this->fileCleanup->deleteOrQueue(['public' => [$previousImage]]);
+                        } catch (Throwable $exception) {
+                            report($exception);
+                        }
+                    });
+                }
             }
-        }
 
-        $area->update($attributes);
+            $area->update($attributes);
 
-        return $this->success($area->fresh(), 'Successfully updated area.');
+            return $area->fresh();
+        });
+
+        return $this->success($area, 'Successfully updated area.');
     }
 
     /**

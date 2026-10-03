@@ -12,16 +12,93 @@ use App\Models\LetterMedia;
 use App\Models\TrashEntry;
 use App\Models\User;
 use App\Services\Letter\LetterPaginationService;
+use App\Services\Letter\LetterService;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Passport\Passport;
+use Mockery;
+use PHPUnit\Framework\Attributes\DataProvider;
+use RuntimeException;
 use Tests\TestCase;
 
 class LetterModuleTest extends TestCase
 {
     use RefreshDatabase;
+
+    #[DataProvider('partialWriteFailures')]
+    public function test_letter_image_storage_failure_removes_a_file_written_before_the_failure(bool $throw): void
+    {
+        $disk = Storage::fake('public');
+        $user = User::factory()->create();
+        $letter = Letter::factory()->for($user)->create();
+        Passport::actingAs($user);
+        $this->failAfterStorageWrite('public', $disk, $throw);
+
+        try {
+            $this->postJson(route('letters.media.store', $letter->uuid), [
+                'file' => UploadedFile::fake()->create('photo.png', 120, 'image/png'),
+            ])->assertServerError();
+        } finally {
+            Storage::set('public', $disk);
+        }
+
+        $this->assertSame([], $disk->allFiles());
+        $this->assertDatabaseCount('letter_media', 0);
+        $this->assertDatabaseCount('jobs', 0);
+        $this->assertModelExists($letter);
+    }
+
+    public static function partialWriteFailures(): array
+    {
+        return [
+            'storage returns false after writing' => [false],
+            'storage throws after writing' => [true],
+        ];
+    }
+
+    public function test_letter_image_upload_does_not_write_after_its_cached_owner_was_deleted(): void
+    {
+        Storage::fake('public');
+        $user = User::factory()->create();
+        $letter = Letter::factory()->for($user)->create();
+        $user->delete();
+
+        try {
+            app(LetterService::class)->storeMedia($letter, UploadedFile::fake()->create('photo.png', 120, 'image/png'));
+            $this->fail('An upload for a deleted letter owner must fail.');
+        } catch (ModelNotFoundException) {
+            $this->assertSame([], Storage::disk('public')->allFiles());
+            $this->assertDatabaseCount('letter_media', 0);
+        }
+    }
+
+    public function test_letter_image_persistence_failure_removes_the_new_file(): void
+    {
+        Storage::fake('public');
+        $user = User::factory()->create();
+        $letter = Letter::factory()->for($user)->create();
+        Passport::actingAs($user);
+        LetterMedia::creating(function (): void {
+            throw new RuntimeException('Simulated letter media persistence failure.');
+        });
+
+        try {
+            $this->postJson(route('letters.media.store', $letter->uuid), [
+                'file' => UploadedFile::fake()->create('photo.png', 120, 'image/png'),
+            ])->assertServerError();
+        } finally {
+            LetterMedia::flushEventListeners();
+            LetterMedia::clearBootedModels();
+        }
+
+        $this->assertSame([], Storage::disk('public')->allFiles());
+        $this->assertDatabaseCount('letter_media', 0);
+        $this->assertModelExists($letter);
+    }
 
     public function test_unauthenticated_letter_requests_return_401(): void
     {
@@ -1192,5 +1269,25 @@ class LetterModuleTest extends TestCase
             ],
             range(1, $count),
         );
+    }
+
+    private function failAfterStorageWrite(string $diskName, FilesystemAdapter $disk, bool $throw): void
+    {
+        $mock = Mockery::mock(FilesystemAdapter::class);
+        $mock->shouldReceive('putFileAs')->once()->andReturnUsing(
+            function (string $directory, UploadedFile $file, string $name) use ($disk, $throw): false {
+                $path = "{$directory}/{$name}";
+                $disk->put($path, 'File bytes written before storage reported failure.');
+                $disk->assertExists($path);
+
+                if ($throw) {
+                    throw new RuntimeException('Simulated storage failure after writing the file.');
+                }
+
+                return false;
+            },
+        );
+        $mock->shouldReceive('delete')->once()->andReturnUsing(fn (string $path): bool => $disk->delete($path));
+        Storage::set($diskName, $mock);
     }
 }

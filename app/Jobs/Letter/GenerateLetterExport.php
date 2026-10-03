@@ -24,6 +24,8 @@ class GenerateLetterExport implements ShouldQueue
 
     public int $timeout = 60;
 
+    public bool $deleteWhenMissingModels = true;
+
     public function __construct(public LetterExport $letterExport) {}
 
     public function handle(

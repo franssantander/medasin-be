@@ -2,19 +2,143 @@
 
 namespace Tests\Feature\Resource;
 
+use App\Data\Resource\StoreResourceData;
 use App\Models\Project;
 use App\Models\Resource;
 use App\Models\ResourceAttachment;
 use App\Models\ResourceTag;
 use App\Models\User;
+use App\Services\Resource\ResourceService;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Mockery;
+use PHPUnit\Framework\Attributes\DataProvider;
+use RuntimeException;
 use Tests\TestCase;
 
 class ResourceModuleTest extends TestCase
 {
     use RefreshDatabase;
+
+    #[DataProvider('partialWriteFailures')]
+    public function test_resource_storage_failure_cleans_a_written_file_and_preserves_existing_attachments(bool $create, bool $throw): void
+    {
+        $disk = Storage::fake('local');
+        $user = User::factory()->create();
+        $resource = $user->resources()->create(['title' => 'Existing resource']);
+        $oldPath = "resources/{$resource->uuid}/existing.txt";
+        $disk->put($oldPath, 'Existing attachment');
+        $resource->attachments()->create(['kind' => 'file', 'path' => $oldPath, 'original_name' => 'existing.txt']);
+        $this->actingAs($user, 'api');
+        $this->failAfterStorageWrite('local', $disk, $throw);
+
+        try {
+            $route = $create ? route('resource.store') : route('resource.attachments.store', $resource->uuid);
+            $this->post($route, [
+                'title' => 'Partial upload resource',
+                'files' => [UploadedFile::fake()->createWithContent('new.txt', 'New attachment')],
+            ], ['Accept' => 'application/json'])->assertServerError();
+        } finally {
+            Storage::set('local', $disk);
+        }
+
+        $this->assertSame([$oldPath], $disk->allFiles());
+        $this->assertDatabaseCount('resources', 1);
+        $this->assertDatabaseCount('resource_attachments', 1);
+        $this->assertDatabaseCount('jobs', 0);
+        $this->assertModelExists($resource);
+    }
+
+    public static function partialWriteFailures(): array
+    {
+        return [
+            'create returns false after writing' => [true, false],
+            'create throws after writing' => [true, true],
+            'add attachment returns false after writing' => [false, false],
+            'add attachment throws after writing' => [false, true],
+        ];
+    }
+
+    public function test_resource_creation_does_not_write_a_file_after_its_cached_owner_was_deleted(): void
+    {
+        Storage::fake('local');
+        $user = User::factory()->create();
+        $user->delete();
+
+        try {
+            app(ResourceService::class)->create($user, new StoreResourceData(
+                title: 'Deleted owner resource',
+                files: [UploadedFile::fake()->createWithContent('file.txt', 'content')],
+            ));
+            $this->fail('An upload for a deleted resource owner must fail.');
+        } catch (ModelNotFoundException) {
+            $this->assertSame([], Storage::disk('local')->allFiles());
+            $this->assertDatabaseCount('resources', 0);
+            $this->assertDatabaseCount('resource_attachments', 0);
+        }
+    }
+
+    public function test_resource_attachment_upload_does_not_write_after_its_cached_owner_was_deleted(): void
+    {
+        Storage::fake('local');
+        $user = User::factory()->create();
+        $resource = $user->resources()->create(['title' => 'Deleted owner resource']);
+        $user->delete();
+
+        try {
+            app(ResourceService::class)->addAttachments($resource, [], [UploadedFile::fake()->createWithContent('file.txt', 'content')]);
+            $this->fail('An upload for a deleted resource owner must fail.');
+        } catch (ModelNotFoundException) {
+            $this->assertSame([], Storage::disk('local')->allFiles());
+            $this->assertDatabaseCount('resource_attachments', 0);
+        }
+    }
+
+    public function test_resource_attachment_upload_does_not_write_after_its_cached_parent_was_deleted(): void
+    {
+        Storage::fake('local');
+        $user = User::factory()->create();
+        $resource = $user->resources()->create(['title' => 'Deleted resource']);
+        $resource->forceDelete();
+
+        try {
+            app(ResourceService::class)->addAttachments($resource, [], [UploadedFile::fake()->createWithContent('file.txt', 'content')]);
+            $this->fail('An upload for a deleted resource must fail.');
+        } catch (ModelNotFoundException) {
+            $this->assertSame([], Storage::disk('local')->allFiles());
+            $this->assertDatabaseCount('resource_attachments', 0);
+        }
+    }
+
+    public function test_resource_attachment_persistence_failure_cleans_new_files_and_preserves_existing_files(): void
+    {
+        Storage::fake('local');
+        $user = User::factory()->create();
+        $resource = $user->resources()->create(['title' => 'Existing resource']);
+        $oldPath = 'resources/existing.txt';
+        Storage::disk('local')->put($oldPath, 'old file');
+        $resource->attachments()->create(['kind' => 'file', 'path' => $oldPath, 'original_name' => 'existing.txt']);
+        $this->actingAs($user, 'api');
+        ResourceAttachment::creating(function (): void {
+            throw new RuntimeException('Simulated new attachment persistence failure.');
+        });
+
+        try {
+            $this->post(route('resource.attachments.store', $resource->uuid), [
+                'files' => [UploadedFile::fake()->createWithContent('file.txt', 'content')],
+            ], ['Accept' => 'application/json'])->assertServerError();
+        } finally {
+            ResourceAttachment::flushEventListeners();
+            ResourceAttachment::clearBootedModels();
+        }
+
+        $this->assertSame([$oldPath], Storage::disk('local')->allFiles());
+        $this->assertDatabaseCount('resource_attachments', 1);
+        $this->assertModelExists($resource);
+    }
 
     public function test_creation_persists_mixed_content_tags_and_associations(): void
     {
@@ -257,7 +381,7 @@ class ResourceModuleTest extends TestCase
         ], ['Accept' => 'application/json'])->assertUnprocessable()->assertJsonValidationErrors('files.0');
 
         ResourceAttachment::creating(function () {
-            throw new \RuntimeException('Simulated attachment persistence failure');
+            throw new RuntimeException('Simulated attachment persistence failure');
         });
         try {
             $this->post(route('resource.store'), [
@@ -325,5 +449,25 @@ class ResourceModuleTest extends TestCase
             $this->getJson(route('resource.index', ['type' => $type]))->assertOk()->assertJsonPath('data.total', 1);
         }
         $this->getJson(route('resource.index'))->assertJsonPath('data.total', 1);
+    }
+
+    private function failAfterStorageWrite(string $diskName, FilesystemAdapter $disk, bool $throw): void
+    {
+        $mock = Mockery::mock(FilesystemAdapter::class);
+        $mock->shouldReceive('putFileAs')->once()->andReturnUsing(
+            function (string $directory, UploadedFile $file, string $name) use ($disk, $throw): false {
+                $path = "{$directory}/{$name}";
+                $disk->put($path, 'File bytes written before storage reported failure.');
+                $disk->assertExists($path);
+
+                if ($throw) {
+                    throw new RuntimeException('Simulated storage failure after writing the file.');
+                }
+
+                return false;
+            },
+        );
+        $mock->shouldReceive('delete')->once()->andReturnUsing(fn (string $path): bool => $disk->delete($path));
+        Storage::set($diskName, $mock);
     }
 }

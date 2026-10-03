@@ -6,16 +6,20 @@ use App\Data\Letter\LetterData;
 use App\Enum\LetterStatus;
 use App\Models\Letter;
 use App\Models\User;
+use App\Services\Profile\FileCleanupService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use RuntimeException;
+use Throwable;
 
 class LetterService
 {
     public function __construct(
         private readonly LetterContentService $content,
+        private readonly FileCleanupService $fileCleanup,
     ) {}
 
     public function listing(User $user, ?LetterStatus $status = null, int $perPage = 15): LengthAwarePaginator
@@ -116,22 +120,38 @@ class LetterService
 
     public function storeMedia(Letter $letter, UploadedFile $file): array
     {
-        $path = $file->store("letters/{$letter->user->uuid}/{$letter->uuid}", 'public');
-        $media = $letter->media()->create([
-            'path' => $path,
-            'original_name' => Str::limit($file->getClientOriginalName(), 250, ''),
-            'mime_type' => $file->getMimeType() ?: $file->getClientMimeType(),
-            'size' => $file->getSize(),
-        ]);
+        return DB::transaction(function () use ($letter, $file): array {
+            $user = User::query()->lockForUpdate()->findOrFail($letter->user_id);
+            $letter = $user->letters()->whereKey($letter->getKey())->firstOrFail();
+            $directory = "letters/{$user->uuid}/{$letter->uuid}";
+            $filename = $file->hashName();
+            $path = "{$directory}/{$filename}";
+            DB::afterRollBack(function () use ($path): void {
+                try {
+                    $this->fileCleanup->deleteOrQueue(['public' => [$path]]);
+                } catch (Throwable $exception) {
+                    report($exception);
+                }
+            });
+            if ($file->storeAs($directory, $filename, 'public') === false) {
+                throw new RuntimeException('Unable to store letter image.');
+            }
+            $media = $letter->media()->create([
+                'path' => $path,
+                'original_name' => Str::limit($file->getClientOriginalName(), 250, ''),
+                'mime_type' => $file->getMimeType() ?: $file->getClientMimeType(),
+                'size' => $file->getSize(),
+            ]);
 
-        return [
-            'uuid' => $media->uuid,
-            'url' => url(Storage::disk('public')->url($media->path)),
-            'kind' => 'image',
-            'mime_type' => $media->mime_type,
-            'name' => $media->original_name,
-            'size' => $media->size,
-        ];
+            return [
+                'uuid' => $media->uuid,
+                'url' => url(Storage::disk('public')->url($media->path)),
+                'kind' => 'image',
+                'mime_type' => $media->mime_type,
+                'name' => $media->original_name,
+                'size' => $media->size,
+            ];
+        });
     }
 
     private function load(Letter $letter): Letter

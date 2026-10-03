@@ -17,6 +17,7 @@ Route::middleware('throttle:api')->group(function (): void {
         require __DIR__.'/v1/resource.php';
         require __DIR__.'/v1/trash.php';
         require __DIR__.'/v1/settings.php';
+        require __DIR__.'/v1/profile.php';
         require __DIR__.'/v1/focus.php';
         require __DIR__.'/v1/habit.php';
         require __DIR__.'/v1/journal.php';

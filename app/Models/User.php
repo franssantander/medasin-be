@@ -13,14 +13,22 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Passport\Contracts\OAuthenticatable;
 use Laravel\Passport\HasApiTokens;
 
 #[Fillable(['first_name', 'last_name', 'email', 'username', 'status', 'password'])]
-#[Hidden(['password', 'remember_token'])]
+#[Hidden(['password', 'remember_token', 'profile_image_path'])]
 class User extends Authenticatable implements MustVerifyEmail, OAuthenticatable
 {
     use HasApiTokens, HasFactory, HasUuid, Notifiable;
+
+    public function getProfileImageUrlAttribute(): ?string
+    {
+        return $this->profile_image_path
+            ? url(Storage::disk('public')->url($this->profile_image_path))
+            : null;
+    }
 
     public function sendEmailVerificationNotification(): void
     {

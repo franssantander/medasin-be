@@ -90,7 +90,7 @@ class AreaNoteController extends Controller
         $note = $area->notes()->whereKey($note->getKey())->firstOrFail();
 
         return $this->success(
-            $this->noteService->storeMedia($note, "areas/{$area->uuid}/notes/{$note->uuid}", $request->file('file')),
+            $this->noteService->storeMedia($request->user(), $note, $request->file('file'), $area),
             'Successfully uploaded note media.',
             201,
         );

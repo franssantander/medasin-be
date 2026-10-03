@@ -2,19 +2,128 @@
 
 namespace Tests\Feature\Area;
 
+use App\Models\Area;
 use App\Models\Project;
 use App\Models\Resource;
 use App\Models\User;
 use Carbon\Carbon;
+use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Passport\Passport;
+use Mockery;
+use PHPUnit\Framework\Attributes\DataProvider;
+use RuntimeException;
 use Tests\TestCase;
 
 class AreaModuleTest extends TestCase
 {
     use RefreshDatabase;
+
+    #[DataProvider('partialWriteFailures')]
+    public function test_area_storage_failure_removes_a_written_file_and_preserves_the_previous_background(bool $replace, bool $throw): void
+    {
+        $disk = Storage::fake('public');
+        $user = User::factory()->create();
+        $oldPath = 'areas/backgrounds/existing.png';
+        $disk->put($oldPath, 'Existing background');
+        $area = $user->areas()->create(['name' => 'Existing area', 'background_image' => $oldPath]);
+        Passport::actingAs($user);
+        $this->failAfterStorageWrite('public', $disk, $throw);
+
+        try {
+            $route = $replace ? route('area.update', $area) : route('area.store');
+            $this->post($route, [
+                '_method' => $replace ? 'PUT' : 'POST',
+                'name' => 'Partial upload area',
+                'background_image' => UploadedFile::fake()->create('new.png', 120, 'image/png'),
+            ], ['Accept' => 'application/json'])->assertServerError();
+        } finally {
+            Storage::set('public', $disk);
+        }
+
+        $this->assertSame([$oldPath], $disk->allFiles());
+        $this->assertSame($oldPath, $area->fresh()->background_image);
+        $this->assertSame('Existing area', $area->fresh()->name);
+        $this->assertDatabaseCount('areas', 1);
+        $this->assertDatabaseCount('jobs', 0);
+    }
+
+    public static function partialWriteFailures(): array
+    {
+        return [
+            'create returns false after writing' => [false, false],
+            'create throws after writing' => [false, true],
+            'replace returns false after writing' => [true, false],
+            'replace throws after writing' => [true, true],
+        ];
+    }
+
+    public function test_area_image_upload_does_not_write_after_its_authenticated_owner_was_deleted(): void
+    {
+        Storage::fake('public');
+        $user = User::factory()->create();
+        Passport::actingAs($user);
+        $user->delete();
+
+        $this->post(route('area.store'), [
+            'name' => 'Deleted owner area',
+            'background_image' => UploadedFile::fake()->create('photo.png', 120, 'image/png'),
+        ], ['Accept' => 'application/json'])->assertNotFound();
+
+        $this->assertSame([], Storage::disk('public')->allFiles());
+        $this->assertDatabaseCount('areas', 0);
+    }
+
+    public function test_area_creation_failure_removes_the_new_background_image(): void
+    {
+        Storage::fake('public');
+        $user = User::factory()->create();
+        Passport::actingAs($user);
+        Area::creating(function (): void {
+            throw new RuntimeException('Simulated area persistence failure.');
+        });
+
+        try {
+            $this->post(route('area.store'), [
+                'name' => 'Rollback area',
+                'background_image' => UploadedFile::fake()->create('photo.png', 120, 'image/png'),
+            ], ['Accept' => 'application/json'])->assertServerError();
+        } finally {
+            Area::flushEventListeners();
+            Area::clearBootedModels();
+        }
+
+        $this->assertSame([], Storage::disk('public')->allFiles());
+        $this->assertDatabaseCount('areas', 0);
+    }
+
+    public function test_failed_area_image_replacement_preserves_the_old_background_and_removes_the_new_file(): void
+    {
+        Storage::fake('public');
+        $user = User::factory()->create();
+        $oldPath = 'areas/backgrounds/existing.png';
+        Storage::disk('public')->put($oldPath, 'existing background');
+        $area = $user->areas()->create(['name' => 'Existing area', 'background_image' => $oldPath]);
+        Passport::actingAs($user);
+        Area::updating(function (): void {
+            throw new RuntimeException('Simulated area update failure.');
+        });
+
+        try {
+            $this->post(route('area.update', $area), [
+                '_method' => 'PUT',
+                'background_image' => UploadedFile::fake()->create('photo.png', 120, 'image/png'),
+            ], ['Accept' => 'application/json'])->assertServerError();
+        } finally {
+            Area::flushEventListeners();
+            Area::clearBootedModels();
+        }
+
+        $this->assertSame([$oldPath], Storage::disk('public')->allFiles());
+        $this->assertSame($oldPath, $area->fresh()->background_image);
+    }
 
     public function test_a_habit_from_the_habits_module_can_be_linked_to_an_area(): void
     {
@@ -454,5 +563,25 @@ class AreaModuleTest extends TestCase
         $this->postJson(route('area.resources.store', $area), ['resource_uuid' => $resource->uuid])
             ->assertUnprocessable()->assertJsonValidationErrors('resource_uuid');
         $this->getJson(route('area.goals.show', [$area, $goal]))->assertNotFound();
+    }
+
+    private function failAfterStorageWrite(string $diskName, FilesystemAdapter $disk, bool $throw): void
+    {
+        $mock = Mockery::mock(FilesystemAdapter::class);
+        $mock->shouldReceive('putFileAs')->once()->andReturnUsing(
+            function (string $directory, UploadedFile $file, string $name) use ($disk, $throw): false {
+                $path = "{$directory}/{$name}";
+                $disk->put($path, 'File bytes written before storage reported failure.');
+                $disk->assertExists($path);
+
+                if ($throw) {
+                    throw new RuntimeException('Simulated storage failure after writing the file.');
+                }
+
+                return false;
+            },
+        );
+        $mock->shouldReceive('delete')->once()->andReturnUsing(fn (string $path): bool => $disk->delete($path));
+        Storage::set($diskName, $mock);
     }
 }

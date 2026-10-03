@@ -3,16 +3,27 @@
 namespace App\Services\Note;
 
 use App\Data\Note\NoteData;
+use App\Models\Area;
 use App\Models\Note;
+use App\Models\User;
+use App\Services\Profile\FileCleanupService;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use RuntimeException;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
+use Throwable;
 
 class NoteService
 {
+    public function __construct(
+        private readonly FileCleanupService $fileCleanup,
+    ) {}
+
     public function tree(HasMany $notes): array
     {
         $notes = $notes
@@ -71,24 +82,51 @@ class NoteService
         return $note->fresh();
     }
 
-    public function storeMedia(Note $note, string $directory, UploadedFile $file): array
+    public function storeMedia(User $user, Note $note, UploadedFile $file, ?Area $area = null): array
     {
-        $path = $file->store($directory, 'public');
-        $media = $note->media()->create([
-            'path' => $path,
-            'original_name' => Str::limit($file->getClientOriginalName(), 250, ''),
-            'mime_type' => $file->getMimeType() ?: $file->getClientMimeType(),
-            'size' => $file->getSize(),
-        ]);
+        return DB::transaction(function () use ($user, $note, $file, $area): array {
+            $user = User::query()->lockForUpdate()->findOrFail($user->getKey());
 
-        return [
-            'uuid' => $media->uuid,
-            'url' => url(Storage::disk('public')->url($media->path)),
-            'kind' => str_starts_with($media->mime_type, 'image/') ? 'image' : 'video',
-            'mime_type' => $media->mime_type,
-            'name' => $media->original_name,
-            'size' => $media->size,
-        ];
+            if ($area) {
+                $area = $user->areas()->whereKey($area->getKey())->firstOrFail();
+                if ($area->archived_at !== null) {
+                    throw new ConflictHttpException('Archived areas are read-only. Restore the area before making changes.');
+                }
+                $note = $area->notes()->whereKey($note->getKey())->firstOrFail();
+                $directory = "areas/{$area->uuid}/notes/{$note->uuid}";
+            } else {
+                $note = $user->standaloneNotes()->whereKey($note->getKey())->firstOrFail();
+                $directory = "notes/{$user->uuid}/{$note->uuid}";
+            }
+
+            $filename = $file->hashName();
+            $path = "{$directory}/{$filename}";
+            DB::afterRollBack(function () use ($path): void {
+                try {
+                    $this->fileCleanup->deleteOrQueue(['public' => [$path]]);
+                } catch (Throwable $exception) {
+                    report($exception);
+                }
+            });
+            if ($file->storeAs($directory, $filename, 'public') === false) {
+                throw new RuntimeException('Unable to store note media.');
+            }
+            $media = $note->media()->create([
+                'path' => $path,
+                'original_name' => Str::limit($file->getClientOriginalName(), 250, ''),
+                'mime_type' => $file->getMimeType() ?: $file->getClientMimeType(),
+                'size' => $file->getSize(),
+            ]);
+
+            return [
+                'uuid' => $media->uuid,
+                'url' => url(Storage::disk('public')->url($media->path)),
+                'kind' => str_starts_with($media->mime_type, 'image/') ? 'image' : 'video',
+                'mime_type' => $media->mime_type,
+                'name' => $media->original_name,
+                'size' => $media->size,
+            ];
+        });
     }
 
     private function resolveParent(

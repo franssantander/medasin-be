@@ -30,7 +30,10 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
         $middleware->appendToPriorityList(AuthenticatesRequests::class, EnsureApiEmailIsVerified::class);
         $middleware->trustProxies(at: '*');
-        $middleware->trimStrings(except: ['pages.*.cover.hero_image_caption']);
+        $middleware->trimStrings(except: [
+            'pages.*.cover.hero_image_caption',
+            fn (Request $request): bool => $request->isMethod('DELETE') && $request->is('api/v1/profile'),
+        ]);
         $middleware->redirectGuestsTo(fn () => null);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

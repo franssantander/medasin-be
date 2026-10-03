@@ -77,8 +77,8 @@ class StandaloneNoteController extends Controller
 
         return $this->success(
             $this->noteService->storeMedia(
+                $request->user(),
                 $note,
-                "notes/{$request->user()->uuid}/{$note->uuid}",
                 $request->file('file'),
             ),
             'Successfully uploaded note media.',
