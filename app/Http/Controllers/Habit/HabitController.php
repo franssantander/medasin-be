@@ -44,7 +44,8 @@ class HabitController extends Controller
             $habits = $request->user()->habits()->with('area')->latest()->get();
             $checkIns = HabitCheckIn::query()
                 ->whereIn('habit_id', $habits->modelKeys())
-                ->whereBetween('check_in_date', [$start->toDateString(), $end->toDateString()])
+                ->where('check_in_date', '>=', $start->toDateString())
+                ->where('check_in_date', '<', $end->addDay()->toDateString())
                 ->orderBy('check_in_date')
                 ->get()
                 ->groupBy('habit_id');

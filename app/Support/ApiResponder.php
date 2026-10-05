@@ -7,6 +7,7 @@ use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
@@ -107,7 +108,10 @@ class ApiResponder
                 'message' => $exception->getMessage(),
                 'file' => $exception->getFile(),
                 'line' => $exception->getLine(),
-                'trace' => collect($exception->getTrace())->take(10)->toArray(),
+                'trace' => collect($exception->getTrace())
+                    ->take(10)
+                    ->map(fn (array $frame): array => Arr::except($frame, ['args']))
+                    ->all(),
             ];
         }
 
