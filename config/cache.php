@@ -17,6 +17,13 @@ return [
 
     'default' => env('CACHE_STORE', 'database'),
 
+    'api_reads' => [
+        'enabled' => env('API_READ_CACHE_ENABLED', true),
+        'store' => env('API_READ_CACHE_STORE', 'api_reads'),
+        'ttl' => (int) env('API_READ_CACHE_TTL', 60),
+        'plan_ttl' => (int) env('API_PLAN_CACHE_TTL', 600),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Cache Stores
@@ -33,6 +40,17 @@ return [
     */
 
     'stores' => [
+
+        'api_reads' => [
+            'driver' => 'failover',
+            'stores' => ['redis', 'database'],
+        ],
+
+        'api_read_revisions' => [
+            'driver' => 'database',
+            'connection' => null,
+            'table' => 'cache',
+        ],
 
         'array' => [
             'driver' => 'array',

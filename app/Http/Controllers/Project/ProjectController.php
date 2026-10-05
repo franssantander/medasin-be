@@ -13,6 +13,7 @@ use App\Http\Requests\Project\UpdateProjectAreaRequest;
 use App\Http\Requests\Project\UpdateProjectRequest;
 use App\Models\Project;
 use App\Models\Resource;
+use App\Services\ApiReadCacheService;
 use App\Services\Project\ProjectService;
 use App\Services\Resource\ResourceService;
 use App\Services\Trash\TrashService;
@@ -40,20 +41,23 @@ class ProjectController extends Controller
             'status' => ['sometimes', Rule::in(['active', 'archived', 'all'])],
         ]);
         $status = $validated['status'] ?? 'active';
-        $query = $request->user()->projects();
 
-        if ($status === 'active') {
-            $query->whereNull('archived_at');
-        } elseif ($status === 'archived') {
-            $query->whereNotNull('archived_at');
-        }
+        return $this->cached($request, function () use ($request, $status): JsonResponse {
+            $query = $request->user()->projects();
 
-        $data = $query->withKanbanCounts()
-            ->with(['area' => fn ($areaQuery) => $areaQuery->withCount('goals')])
-            ->latest()
-            ->get();
+            if ($status === 'active') {
+                $query->whereNull('archived_at');
+            } elseif ($status === 'archived') {
+                $query->whereNotNull('archived_at');
+            }
 
-        return $this->success($data->map(fn (Project $project): array => ProjectListCardData::fromModel($project)->toArray())->all());
+            $data = $query->withKanbanCounts()
+                ->with(['area' => fn ($areaQuery) => $areaQuery->withCount('goals')])
+                ->latest()
+                ->get();
+
+            return $this->success($data->map(fn (Project $project): array => ProjectListCardData::fromModel($project)->toArray())->all());
+        });
     }
 
     /**
@@ -80,37 +84,41 @@ class ProjectController extends Controller
      */
     public function show(Request $request, Project $project): JsonResponse
     {
-        $data = $request->user()
-            ->projects()
-            ->whereKey($project->getKey())
-            ->withKanbanCounts()
-            ->with([
-                'area' => fn ($query) => $query->withCount('goals'),
-                'boards' => fn ($query) => $query
-                    ->withCount('tasks')
-                    ->with(['stages' => fn ($stages) => $stages->withCount('tasks')]),
-            ])
-            ->firstOrFail();
+        $project = $this->ownedProject($request->user(), $project);
 
-        $resources = $request->user()->resources()
-            ->whereNull('archived_at')
-            ->where(function ($query) use ($data): void {
-                $query
-                    ->whereHas('projects', fn ($projects) => $projects->whereKey($data->getKey()))
-                    ->orWhereHas('boardTasks.board', fn ($boards) => $boards
-                        ->where('context_type', $data->getMorphClass())
-                        ->where('context_id', $data->getKey()));
-            })
-            ->with(['attachments', 'tags', 'projects', 'areas'])
-            ->latest('resources.created_at')
-            ->get()
-            ->map(fn ($resource) => $this->resourceService->serialize($resource))
-            ->values()
-            ->all();
-        $payload = ProjectDetailData::fromModel($data)->toArray();
-        $payload['resources'] = $resources;
+        return $this->cached($request, function () use ($request, $project): JsonResponse {
+            $data = $request->user()
+                ->projects()
+                ->whereKey($project->getKey())
+                ->withKanbanCounts()
+                ->with([
+                    'area' => fn ($query) => $query->withCount('goals'),
+                    'boards' => fn ($query) => $query
+                        ->withCount('tasks')
+                        ->with(['stages' => fn ($stages) => $stages->withCount('tasks')]),
+                ])
+                ->firstOrFail();
 
-        return $this->success($payload);
+            $resources = $request->user()->resources()
+                ->whereNull('archived_at')
+                ->where(function ($query) use ($data): void {
+                    $query
+                        ->whereHas('projects', fn ($projects) => $projects->whereKey($data->getKey()))
+                        ->orWhereHas('boardTasks.board', fn ($boards) => $boards
+                            ->where('context_type', $data->getMorphClass())
+                            ->where('context_id', $data->getKey()));
+                })
+                ->with(['attachments', 'tags', 'projects', 'areas'])
+                ->latest('resources.created_at')
+                ->get()
+                ->map(fn ($resource) => $this->resourceService->serialize($resource))
+                ->values()
+                ->all();
+            $payload = ProjectDetailData::fromModel($data)->toArray();
+            $payload['resources'] = $resources;
+
+            return $this->success($payload);
+        });
     }
 
     /**
@@ -127,7 +135,7 @@ class ProjectController extends Controller
     public function update(UpdateProjectRequest $request, Project $project)
     {
         $project = $request->user()->projects()->whereKey($project->getKey())->firstOrFail();
-        $project->update(ProjectData::from($request->validated())->toArray());
+        $project->updateOrFail(ProjectData::from($request->validated())->toArray());
 
         return $this->success($project->fresh(), 'Successfully updated project.');
     }
@@ -148,7 +156,7 @@ class ProjectController extends Controller
         $project = $request->user()->projects()->whereKey($project->getKey())->firstOrFail();
 
         if ($project->archived_at === null) {
-            $project->forceFill(['archived_at' => now()])->save();
+            $project->forceFill(['archived_at' => now()])->saveOrFail();
         }
 
         return $this->success($project->fresh(), 'Successfully archived project.');
@@ -200,7 +208,10 @@ class ProjectController extends Controller
             ->whereNull('archived_at')
             ->whereIn('uuid', $validated['resource_uuids'])
             ->pluck('resources.id');
-        $project->resources()->syncWithoutDetaching($resourceIds);
+        DB::transaction(function () use ($request, $project, $resourceIds): void {
+            $project->resources()->syncWithoutDetaching($resourceIds);
+            app(ApiReadCacheService::class)->invalidateUser($request->user());
+        });
 
         return $this->success(null, 'Successfully linked resources to project.');
     }
@@ -217,9 +228,10 @@ class ProjectController extends Controller
 
         abort_if(! $isDirectlyLinked && $linkedTaskIds->isEmpty(), 404);
 
-        DB::transaction(function () use ($project, $resource, $linkedTaskIds): void {
+        DB::transaction(function () use ($request, $project, $resource, $linkedTaskIds): void {
             $project->resources()->detach($resource->getKey());
             $resource->boardTasks()->detach($linkedTaskIds);
+            app(ApiReadCacheService::class)->invalidateUser($request->user());
         });
 
         return $this->success(null, 'Successfully removed resource from project.');

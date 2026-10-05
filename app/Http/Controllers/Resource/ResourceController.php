@@ -25,7 +25,9 @@ class ResourceController extends Controller
 
     public function index(ListResourceRequest $request): JsonResponse
     {
-        return $this->success($this->service->listing($request->user(), ListResourceData::from($request->validated())));
+        return $this->cached($request, fn (): JsonResponse => $this->success(
+            $this->service->listing($request->user(), ListResourceData::from($request->validated())),
+        ));
     }
 
     public function store(StoreResourceRequest $request): JsonResponse
@@ -37,9 +39,9 @@ class ResourceController extends Controller
     {
         $resource = $request->user()->resources()->whereKey($resource->getKey())->firstOrFail();
 
-        return $this->success(
+        return $this->cached($request, fn (): JsonResponse => $this->success(
             $this->service->serialize($resource->load(['attachments', 'tags', 'projects', 'areas'])),
-        );
+        ));
     }
 
     public function update(UpdateResourceRequest $request, Resource $resource): JsonResponse
@@ -72,7 +74,7 @@ class ResourceController extends Controller
 
     public function tags(Request $request): JsonResponse
     {
-        return $this->success($this->service->tags($request->user()));
+        return $this->cached($request, fn (): JsonResponse => $this->success($this->service->tags($request->user())));
     }
 
     public function archive(Request $request, Resource $resource): JsonResponse
@@ -90,7 +92,7 @@ class ResourceController extends Controller
         $resource = $request->user()->resources()->whereKey($resource->getKey())->firstOrFail();
 
         if ($resource->archived_at !== null) {
-            $resource->forceFill(['archived_at' => null])->save();
+            $resource->forceFill(['archived_at' => null])->saveOrFail();
         }
 
         return $this->success(

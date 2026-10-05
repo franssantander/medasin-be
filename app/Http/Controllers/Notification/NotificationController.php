@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Notifications\DatabaseNotification;
+use Illuminate\Support\Facades\DB;
 
 class NotificationController extends Controller
 {
@@ -15,21 +16,26 @@ class NotificationController extends Controller
             'per_page' => ['sometimes', 'integer', 'between:1,50'],
             'unread_only' => ['sometimes', 'boolean'],
         ]);
-        $query = $request->user()->notifications();
-        if ($data['unread_only'] ?? false) {
-            $query->unread();
-        }
 
-        $page = $query->orderByDesc('id')->paginate($data['per_page'] ?? 15);
-        $page->through(fn (DatabaseNotification $notification): array => $this->serialize($notification));
+        return $this->cached($request, function () use ($request, $data): JsonResponse {
+            $query = $request->user()->notifications();
+            if ($data['unread_only'] ?? false) {
+                $query->unread();
+            }
 
-        return $this->success($page);
+            $page = $query->orderByDesc('id')->paginate($data['per_page'] ?? 15);
+            $page->through(fn (DatabaseNotification $notification): array => $this->serialize($notification));
+
+            return $this->success($page);
+        });
     }
 
     public function markRead(Request $request, string $notification): JsonResponse
     {
         $item = $request->user()->notifications()->whereKey($notification)->firstOrFail();
-        $item->markAsRead();
+        DB::transaction(function () use ($item): void {
+            $item->markAsRead();
+        });
 
         return $this->success($this->serialize($item));
     }

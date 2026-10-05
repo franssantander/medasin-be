@@ -8,6 +8,7 @@ use App\Http\Requests\Focus\StoreFocusTaskRequest;
 use App\Http\Requests\Focus\UpdateFocusTaskRequest;
 use App\Models\FocusTask;
 use App\Services\Focus\FocusService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -19,7 +20,7 @@ class FocusTaskController extends Controller
     {
         $data = $request->validate(['status' => ['sometimes', Rule::in(['active', 'completed', 'all'])]]);
 
-        return $this->success($this->focus->tasks($request->user(), $data['status'] ?? 'active')->map(fn (FocusTask $task): array => FocusTaskData::fromModel($task)->toArray())->all());
+        return $this->cached($request, fn (): JsonResponse => $this->success($this->focus->tasks($request->user(), $data['status'] ?? 'active')->map(fn (FocusTask $task): array => FocusTaskData::fromModel($task)->toArray())->all()));
     }
 
     public function store(StoreFocusTaskRequest $request)

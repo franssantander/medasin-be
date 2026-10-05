@@ -4,8 +4,10 @@ namespace App\Services\Habit;
 
 use App\Models\Area;
 use App\Models\Habit;
+use App\Models\HabitCheckIn;
 use App\Models\User;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class HabitService
@@ -22,20 +24,23 @@ class HabitService
     {
         $areaUuid = $data['area_uuid'] ?? null;
         unset($data['area_uuid']);
-        $habit = $user->habits()->create($data);
-        if ($areaUuid) {
-            $habit->area()->associate($user->areas()->where('uuid', $areaUuid)->whereNull('archived_at')->firstOrFail());
-            $habit->save();
-        }
 
-        return $habit->load('area');
+        return DB::transaction(function () use ($user, $data, $areaUuid): Habit {
+            $habit = $user->habits()->create($data);
+            if ($areaUuid) {
+                $habit->area()->associate($user->areas()->where('uuid', $areaUuid)->whereNull('archived_at')->firstOrFail());
+                $habit->save();
+            }
+
+            return $habit->load('area');
+        });
     }
 
     public function linkToArea(User $user, Area $area, string $habitUuid): Habit
     {
         $habit = $user->habits()->where('uuid', $habitUuid)->firstOrFail();
         $habit->area()->associate($area);
-        $habit->save();
+        $habit->saveOrFail();
 
         return $habit->fresh()->load('area');
     }
@@ -46,7 +51,8 @@ class HabitService
         $day = CarbonImmutable::parse($date, $data['timezone'] ?? 'UTC')->startOfDay();
         if ($day->isFuture() || ! $habit->is_active) {
             throw ValidationException::withMessages(['date' => 'This habit cannot be checked in on that date.']);
-        } $entry = $habit->checkIns()->updateOrCreate(['check_in_date' => $day], ['completed' => $data['completed']]);
+        }
+        $entry = DB::transaction(fn (): HabitCheckIn => $habit->checkIns()->updateOrCreate(['check_in_date' => $day], ['completed' => $data['completed']]));
 
         return ['date' => $entry->check_in_date->toDateString(), 'completed' => $entry->completed];
     }

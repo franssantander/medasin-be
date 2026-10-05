@@ -25,11 +25,14 @@ class LetterExportController extends Controller
 
     public function index(ListLetterExportRequest $request, Letter $letter): JsonResponse
     {
-        $letter = $this->letterService->find($request->user(), $letter);
-        $exports = $this->exportService->listing($letter, $request->validated('per_page', 15));
-        $exports->through(fn (LetterExport $export): array => LetterExportData::fromModel($export)->toArray());
+        $letter = $request->user()->letters()->whereKey($letter->getKey())->firstOrFail();
 
-        return $this->success($exports);
+        return $this->cached($request, function () use ($request, $letter): JsonResponse {
+            $exports = $this->exportService->listing($letter, $request->validated('per_page', 15));
+            $exports->through(fn (LetterExport $export): array => LetterExportData::fromModel($export)->toArray());
+
+            return $this->success($exports);
+        });
     }
 
     public function store(StoreLetterExportRequest $request, Letter $letter): JsonResponse
@@ -48,10 +51,12 @@ class LetterExportController extends Controller
 
     public function show(Request $request, Letter $letter, LetterExport $letterExport): JsonResponse
     {
-        $letter = $this->letterService->find($request->user(), $letter);
-        $letterExport = $this->exportService->find($letter, $letterExport);
+        $letter = $request->user()->letters()->whereKey($letter->getKey())->firstOrFail();
+        $letterExport = $letter->exports()->whereKey($letterExport->getKey())->firstOrFail();
 
-        return $this->success(LetterExportData::fromModel($letterExport)->toArray());
+        return $this->cached($request, fn (): JsonResponse => $this->success(LetterExportData::fromModel(
+            $this->exportService->find($letter, $letterExport),
+        )->toArray()));
     }
 
     public function update(UpdateLetterExportRequest $request, Letter $letter, LetterExport $letterExport): JsonResponse

@@ -42,7 +42,7 @@ class GenerateLetterExport implements ShouldQueue
             'status' => LetterExportStatus::PROCESSING,
             'started_at' => now(),
             'error_message' => null,
-        ])->save();
+        ])->saveOrFail();
 
         $letter = $export->letter;
         if (! $letter) {
@@ -64,13 +64,13 @@ class GenerateLetterExport implements ShouldQueue
                 'page_count' => count($pages),
                 'completed_at' => now(),
                 'error_message' => null,
-            ])->save();
+            ])->saveOrFail();
 
             if ($currentLetter->sourceHash() === $currentExport->source_hash) {
                 $currentLetter->forceFill([
                     'status' => LetterStatus::EXPORTED,
                     'exported_at' => now(),
-                ])->save();
+                ])->saveOrFail();
             }
         });
     }
@@ -85,6 +85,6 @@ class GenerateLetterExport implements ShouldQueue
         $export->forceFill([
             'status' => LetterExportStatus::FAILED,
             'error_message' => 'The letter export could not be prepared.',
-        ])->save();
+        ])->saveOrFail();
     }
 }

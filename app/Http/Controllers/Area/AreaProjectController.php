@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Area\LinkProjectRequest;
 use App\Models\Area;
 use App\Models\Project;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class AreaProjectController extends Controller
@@ -18,7 +19,7 @@ class AreaProjectController extends Controller
     {
         $area = $this->ownedArea($request->user(), $area);
 
-        return $this->success($area->projects()->latest()->paginate(15));
+        return $this->cached($request, fn (): JsonResponse => $this->success($area->projects()->latest()->paginate(15)));
     }
 
     public function store(LinkProjectRequest $request, Area $area)
@@ -30,7 +31,7 @@ class AreaProjectController extends Controller
             ->where('uuid', $data->project_uuid)
             ->firstOrFail();
         $project->area()->associate($area);
-        $project->save();
+        $project->saveOrFail();
 
         return $this->success($project->fresh()->load('area'), 'Successfully linked project.');
     }
@@ -41,7 +42,7 @@ class AreaProjectController extends Controller
         $this->ensureAreaIsMutable($area);
         $project = $area->projects()->whereKey($project->getKey())->firstOrFail();
         $project->area()->dissociate();
-        $project->save();
+        $project->saveOrFail();
 
         return $this->success(null, 'Successfully detached project.');
     }

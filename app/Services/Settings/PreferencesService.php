@@ -9,7 +9,7 @@ class PreferencesService
     public function updateFont(User $user, string $fontFamily): User
     {
         $user->font_family = $fontFamily;
-        $user->save();
+        $user->saveOrFail();
 
         return $user->refresh();
     }

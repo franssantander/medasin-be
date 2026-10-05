@@ -12,6 +12,7 @@ use App\Models\Board;
 use App\Models\Project;
 use App\Services\Board\BoardService;
 use App\Services\Trash\TrashService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class ProjectBoardController extends Controller
@@ -26,12 +27,15 @@ class ProjectBoardController extends Controller
     public function index(Request $request, Project $project)
     {
         $project = $this->ownedProject($request->user(), $project);
-        $boards = $project->boards()
-            ->withCount('tasks')
-            ->with(['stages' => fn ($query) => $query->withCount('tasks')])
-            ->get();
 
-        return $this->success($boards->map(fn (Board $board): array => BoardSummaryData::fromModel($board)->toArray())->all());
+        return $this->cached($request, function () use ($project): JsonResponse {
+            $boards = $project->boards()
+                ->withCount('tasks')
+                ->with(['stages' => fn ($query) => $query->withCount('tasks')])
+                ->get();
+
+            return $this->success($boards->map(fn (Board $board): array => BoardSummaryData::fromModel($board)->toArray())->all());
+        });
     }
 
     public function store(StoreBoardRequest $request, Project $project)
@@ -48,7 +52,7 @@ class ProjectBoardController extends Controller
         $project = $this->ownedProject($request->user(), $project);
         $board = $this->ownedBoard($project, $board);
 
-        return $this->success(BoardDetailData::fromModel($this->loadBoard($board))->toArray());
+        return $this->cached($request, fn (): JsonResponse => $this->success(BoardDetailData::fromModel($this->loadBoard($board))->toArray()));
     }
 
     public function update(UpdateBoardRequest $request, Project $project, Board $board)
@@ -56,7 +60,7 @@ class ProjectBoardController extends Controller
         $project = $this->ownedProject($request->user(), $project);
         $this->ensureProjectIsMutable($project);
         $board = $this->ownedBoard($project, $board);
-        $board->update($request->validated());
+        $board->updateOrFail($request->validated());
 
         return $this->success(BoardDetailData::fromModel($this->loadBoard($board))->toArray(), 'Successfully updated board.');
     }

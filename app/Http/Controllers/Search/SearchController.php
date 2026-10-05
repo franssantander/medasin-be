@@ -13,12 +13,12 @@ class SearchController extends Controller
     {
         $validated = $request->validated();
 
-        return $this->success($search->search(
+        return $this->cached($request, fn (): JsonResponse => $this->success($search->search(
             $request->user(),
             $validated['q'],
             $validated['type'] ?? null,
             (int) ($validated['limit'] ?? 5),
             (bool) ($validated['include_archived'] ?? false),
-        ), 'OK');
+        ), 'OK'));
     }
 }

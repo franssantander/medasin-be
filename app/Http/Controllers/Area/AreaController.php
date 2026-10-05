@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Services\Area\AreaService;
 use App\Services\Profile\FileCleanupService;
 use App\Services\Trash\TrashService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -38,17 +39,20 @@ class AreaController extends Controller
             'status' => ['sometimes', Rule::in(['active', 'archived', 'all'])],
         ]);
         $status = $validated['status'] ?? 'active';
-        $query = $request->user()->areas();
 
-        if ($status === 'active') {
-            $query->whereNull('archived_at');
-        } elseif ($status === 'archived') {
-            $query->whereNotNull('archived_at');
-        }
+        return $this->cached($request, function () use ($request, $status): JsonResponse {
+            $query = $request->user()->areas();
 
-        $data = $query->latest()->get();
+            if ($status === 'active') {
+                $query->whereNull('archived_at');
+            } elseif ($status === 'archived') {
+                $query->whereNotNull('archived_at');
+            }
 
-        return $this->success($data);
+            $data = $query->latest()->get();
+
+            return $this->success($data);
+        });
     }
 
     /**
@@ -97,9 +101,9 @@ class AreaController extends Controller
      */
     public function show(Request $request, Area $area)
     {
-        $data = $this->ownedArea($request->user(), $area)->load(['projects', 'resources']);
+        $data = $this->ownedArea($request->user(), $area);
 
-        return $this->success($data);
+        return $this->cached($request, fn (): JsonResponse => $this->success($data->load(['projects', 'resources'])));
     }
 
     /**
@@ -189,7 +193,7 @@ class AreaController extends Controller
         $area = $this->ownedArea($request->user(), $area);
 
         if ($area->archived_at !== null) {
-            $area->forceFill(['archived_at' => null])->save();
+            $area->forceFill(['archived_at' => null])->saveOrFail();
         }
 
         return $this->success($area->fresh(), 'Successfully restored area.');

@@ -2,8 +2,10 @@
 
 namespace Database\Seeders;
 
+use App\Models\Area;
 use App\Models\User;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 class AreaSeeder extends Seeder
@@ -58,7 +60,7 @@ class AreaSeeder extends Seeder
 
             Storage::disk('public')->put($imagePath, file_get_contents($sourcePath));
 
-            $user->areas()->updateOrCreate(
+            DB::transaction(fn (): Area => $user->areas()->updateOrCreate(
                 ['slug' => $slug],
                 [
                     ...$area,
@@ -66,7 +68,7 @@ class AreaSeeder extends Seeder
                     'background_image' => $imagePath,
                     'archived_at' => null,
                 ],
-            );
+            ));
         }
     }
 }

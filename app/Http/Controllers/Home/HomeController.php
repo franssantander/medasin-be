@@ -13,9 +13,11 @@ class HomeController extends Controller
 
     public function show(ShowHomeRequest $request): JsonResponse
     {
-        return $this->success($this->home->show(
+        $timezone = $request->validated('timezone', 'UTC');
+
+        return $this->cached($request, fn (): JsonResponse => $this->success($this->home->show(
             $request->user(),
-            $request->validated('timezone', 'UTC'),
-        ));
+            $timezone,
+        )), ['date' => now($timezone)->toDateString()]);
     }
 }

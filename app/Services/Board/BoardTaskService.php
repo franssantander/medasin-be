@@ -7,6 +7,7 @@ use App\Models\Board;
 use App\Models\BoardStage;
 use App\Models\BoardTask;
 use App\Models\User;
+use App\Services\ApiReadCacheService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -124,6 +125,10 @@ class BoardTaskService
                 ->pluck('notes.id');
             $this->ensureAllResolved('note_uuids', $data['note_uuids'], $ids->all());
             $task->notes()->sync($ids);
+        }
+
+        if (array_intersect(['label_uuids', 'resource_uuids', 'note_uuids'], array_keys($data)) !== []) {
+            app(ApiReadCacheService::class)->invalidateUser($user);
         }
     }
 

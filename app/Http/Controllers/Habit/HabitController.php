@@ -11,6 +11,7 @@ use App\Models\Habit;
 use App\Models\HabitCheckIn;
 use App\Services\Habit\HabitService;
 use Carbon\CarbonImmutable;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 
@@ -23,7 +24,7 @@ class HabitController extends Controller
      */
     public function index(Request $request)
     {
-        return $this->success($request->user()->habits()->with('area')->latest()->get());
+        return $this->cached($request, fn (): JsonResponse => $this->success($request->user()->habits()->with('area')->latest()->get()));
     }
 
     public function calendar(HabitDashboardRequest $request)
@@ -39,27 +40,29 @@ class HabitController extends Controller
             ]);
         }
 
-        $habits = $request->user()->habits()->with('area')->latest()->get();
-        $checkIns = HabitCheckIn::query()
-            ->whereIn('habit_id', $habits->modelKeys())
-            ->whereBetween('check_in_date', [$start->toDateString(), $end->toDateString()])
-            ->orderBy('check_in_date')
-            ->get()
-            ->groupBy('habit_id');
+        return $this->cached($request, function () use ($request, $start, $end): JsonResponse {
+            $habits = $request->user()->habits()->with('area')->latest()->get();
+            $checkIns = HabitCheckIn::query()
+                ->whereIn('habit_id', $habits->modelKeys())
+                ->whereBetween('check_in_date', [$start->toDateString(), $end->toDateString()])
+                ->orderBy('check_in_date')
+                ->get()
+                ->groupBy('habit_id');
 
-        return $this->success([
-            'habits' => $habits,
-            'check_ins' => $habits->mapWithKeys(fn (Habit $habit) => [
-                $habit->uuid => $checkIns->get($habit->getKey(), collect())
-                    ->map(fn (HabitCheckIn $checkIn) => [
-                        'date' => $checkIn->check_in_date->toDateString(),
-                        'completed' => $checkIn->completed,
-                    ])
-                    ->values(),
-            ]),
-            'start_date' => $start->toDateString(),
-            'end_date' => $end->toDateString(),
-        ]);
+            return $this->success([
+                'habits' => $habits,
+                'check_ins' => $habits->mapWithKeys(fn (Habit $habit) => [
+                    $habit->uuid => $checkIns->get($habit->getKey(), collect())
+                        ->map(fn (HabitCheckIn $checkIn) => [
+                            'date' => $checkIn->check_in_date->toDateString(),
+                            'completed' => $checkIn->completed,
+                        ])
+                        ->values(),
+                ]),
+                'start_date' => $start->toDateString(),
+                'end_date' => $end->toDateString(),
+            ]);
+        });
     }
 
     /**
@@ -75,7 +78,9 @@ class HabitController extends Controller
      */
     public function show(Request $request, Habit $habit)
     {
-        return $this->success($this->habits->owned($request->user(), $habit)->load('area'));
+        $habit = $this->habits->owned($request->user(), $habit);
+
+        return $this->cached($request, fn (): JsonResponse => $this->success($habit->load('area')));
     }
 
     /**
@@ -84,7 +89,7 @@ class HabitController extends Controller
     public function update(UpdateHabitRequest $request, Habit $habit)
     {
         $habit = $this->habits->owned($request->user(), $habit);
-        $habit->update(collect($request->validated())->except('area_uuid')->all());
+        $habit->updateOrFail(collect($request->validated())->except('area_uuid')->all());
 
         return $this->success($habit->fresh());
     }
@@ -94,7 +99,7 @@ class HabitController extends Controller
      */
     public function destroy(Request $request, Habit $habit)
     {
-        $this->habits->owned($request->user(), $habit)->delete();
+        $this->habits->owned($request->user(), $habit)->deleteOrFail();
 
         return $this->success(null, 'Habit deleted.');
     }

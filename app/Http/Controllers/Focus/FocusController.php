@@ -9,6 +9,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Focus\UpdateFocusSettingsRequest;
 use App\Models\FocusTask;
 use App\Services\Focus\FocusService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class FocusController extends Controller
@@ -32,17 +33,20 @@ class FocusController extends Controller
     public function linkableTasks(Request $request)
     {
         $data = $request->validate(['search' => ['sometimes', 'nullable', 'string', 'max:120']]);
-        $tasks = $this->focus->linkableTasks($request->user(), $data['search'] ?? null)->map(function ($task) {
-            return [
-                'uuid' => $task->uuid,
-                'title' => $task->title,
-                'project' => $task->board->context?->name,
-                'board' => $task->board->name,
-                'stage' => $task->stage->name,
-            ];
-        })->values();
 
-        return $this->success($tasks);
+        return $this->cached($request, function () use ($request, $data): JsonResponse {
+            $tasks = $this->focus->linkableTasks($request->user(), $data['search'] ?? null)->map(function ($task) {
+                return [
+                    'uuid' => $task->uuid,
+                    'title' => $task->title,
+                    'project' => $task->board->context?->name,
+                    'board' => $task->board->name,
+                    'stage' => $task->stage->name,
+                ];
+            })->values();
+
+            return $this->success($tasks);
+        });
     }
 
     public function updateSettings(UpdateFocusSettingsRequest $request)

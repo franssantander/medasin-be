@@ -10,11 +10,14 @@ use App\Http\Requests\Area\StoreHabitRequest;
 use App\Http\Requests\Area\UpdateHabitRequest;
 use App\Models\Area;
 use App\Models\Habit;
+use App\Models\HabitCheckIn;
 use App\Services\Habit\HabitService;
 use App\Services\Habit\HabitStreakService;
 use App\Services\Trash\TrashService;
 use Carbon\CarbonImmutable;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class AreaHabitController extends Controller
@@ -31,7 +34,7 @@ class AreaHabitController extends Controller
     {
         $area = $this->ownedArea($request->user(), $area);
 
-        return $this->success($area->habits()->latest()->paginate(15));
+        return $this->cached($request, fn (): JsonResponse => $this->success($area->habits()->latest()->paginate(15)));
     }
 
     public function store(StoreHabitRequest $request, Area $area)
@@ -40,10 +43,10 @@ class AreaHabitController extends Controller
         $this->ensureAreaIsMutable($area);
         $data = HabitData::from($request->validated())->toArray();
         $this->validateSchedule($data);
-        $habit = $request->user()->habits()->create([
+        $habit = DB::transaction(fn (): Habit => $request->user()->habits()->create([
             ...$data,
             'area_id' => $area->getKey(),
-        ]);
+        ]));
 
         return $this->success($habit, 'Successfully created habit.', 201);
     }
@@ -61,8 +64,9 @@ class AreaHabitController extends Controller
     public function show(Request $request, Area $area, Habit $habit)
     {
         $area = $this->ownedArea($request->user(), $area);
+        $habit = $area->habits()->whereKey($habit->getKey())->firstOrFail();
 
-        return $this->success($area->habits()->whereKey($habit->getKey())->firstOrFail());
+        return $this->cached($request, fn (): JsonResponse => $this->success($habit));
     }
 
     public function update(UpdateHabitRequest $request, Area $area, Habit $habit)
@@ -72,7 +76,7 @@ class AreaHabitController extends Controller
         $habit = $area->habits()->whereKey($habit->getKey())->firstOrFail();
         $data = HabitData::from($request->validated())->toArray();
         $this->validateSchedule($data, $habit);
-        $habit->update($data);
+        $habit->updateOrFail($data);
 
         return $this->success($habit->fresh(), 'Successfully updated habit.');
     }
@@ -103,7 +107,9 @@ class AreaHabitController extends Controller
             throw ValidationException::withMessages(['end_date' => 'History is limited to 366 days.']);
         }
 
-        return $this->success($this->historyData($habit, $start, $end, $timezone));
+        return $this->cached($request, fn (): JsonResponse => $this->success(
+            $this->historyData($habit, $start, $end, $timezone),
+        ), ['date' => now($timezone)->toDateString()]);
     }
 
     public function checkIn(Request $request, Area $area, Habit $habit, string $date)
@@ -131,12 +137,12 @@ class AreaHabitController extends Controller
         }
         $existing = $habit->checkIns()->whereDate('check_in_date', $checkInDate)->first();
         if ($existing) {
-            $existing->update(['completed' => $validated['completed']]);
+            $existing->updateOrFail(['completed' => $validated['completed']]);
         } else {
-            $habit->checkIns()->create([
+            DB::transaction(fn (): HabitCheckIn => $habit->checkIns()->create([
                 'check_in_date' => $checkInDate,
                 'completed' => $validated['completed'],
-            ]);
+            ]));
         }
 
         return $this->success(

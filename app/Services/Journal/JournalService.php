@@ -7,6 +7,7 @@ use App\Models\FocusSession;
 use App\Models\JournalEntry;
 use App\Models\TrashEntry;
 use App\Models\User;
+use App\Services\ApiReadCacheService;
 use App\Services\Search\SearchText;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Arr;
@@ -141,6 +142,7 @@ class JournalService
         }
 
         $entry->resources()->sync($resourceIds);
+        app(ApiReadCacheService::class)->invalidateUser($user);
     }
 
     private function load(JournalEntry $entry): JournalEntry

@@ -44,6 +44,11 @@ class ProfileTest extends AuthTestCase
         $this->getJson(route('auth.me'))->assertOk()
             ->assertJsonPath('data.profile_image_url', null)
             ->assertJsonMissingPath('data.profile_image_path');
+
+        $this->assertDatabaseHas('users', [
+            'id' => $user->id,
+            'profile_image_path' => null,
+        ]);
     }
 
     #[DataProvider('allowedImageTypes')]

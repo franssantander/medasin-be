@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Plan;
 
 use App\Http\Controllers\Controller;
 use App\Models\Plan;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class PlanController extends Controller
@@ -11,10 +12,9 @@ class PlanController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(Request $request): JsonResponse
     {
-        $data = Plan::all();
-        return $this->success($data);
+        return $this->cached($request, fn (): JsonResponse => $this->success(Plan::all()));
     }
 
     /**

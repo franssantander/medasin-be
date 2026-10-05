@@ -12,6 +12,7 @@ use App\Models\Area;
 use App\Models\Note;
 use App\Services\Note\NoteService;
 use App\Services\Trash\TrashService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class AreaNoteController extends Controller
@@ -26,9 +27,10 @@ class AreaNoteController extends Controller
     public function index(Request $request, Area $area)
     {
         $area = $this->ownedArea($request->user(), $area);
-        $notes = $area->notes()->orderByDesc('is_pinned')->latest('updated_at')->paginate(15);
 
-        return $this->success($notes);
+        return $this->cached($request, fn (): JsonResponse => $this->success(
+            $area->notes()->orderByDesc('is_pinned')->latest('updated_at')->paginate(15),
+        ));
     }
 
     public function store(StoreNoteRequest $request, Area $area)
@@ -47,8 +49,9 @@ class AreaNoteController extends Controller
     public function show(Request $request, Area $area, Note $note)
     {
         $area = $this->ownedArea($request->user(), $area);
+        $note = $area->notes()->whereKey($note->getKey())->firstOrFail();
 
-        return $this->success($area->notes()->whereKey($note->getKey())->firstOrFail());
+        return $this->cached($request, fn (): JsonResponse => $this->success($note));
     }
 
     public function update(UpdateNoteRequest $request, Area $area, Note $note)
@@ -80,7 +83,7 @@ class AreaNoteController extends Controller
     {
         $area = $this->ownedArea($request->user(), $area);
 
-        return $this->success($this->noteService->tree($area->notes()));
+        return $this->cached($request, fn (): JsonResponse => $this->success($this->noteService->tree($area->notes())));
     }
 
     public function storeMedia(StoreNoteMediaRequest $request, Area $area, Note $note)

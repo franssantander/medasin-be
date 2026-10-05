@@ -8,6 +8,7 @@ use App\Data\Resource\StoreResourceData;
 use App\Models\Resource;
 use App\Models\ResourceTag;
 use App\Models\User;
+use App\Services\ApiReadCacheService;
 use App\Services\Profile\FileCleanupService;
 use App\Services\Search\SearchText;
 use Illuminate\Support\Facades\DB;
@@ -129,6 +130,8 @@ class ResourceService
             $resource->projects()->sync($projectIds);
             $resource->areas()->sync($areaIds);
 
+            app(ApiReadCacheService::class)->invalidateUser($user);
+
             return $this->serialize($resource->fresh(['attachments', 'tags', 'projects', 'areas']));
         });
     }
@@ -160,6 +163,8 @@ class ResourceService
             $resource->projects()->sync($projectIds);
             $resource->areas()->sync($areaIds);
 
+            app(ApiReadCacheService::class)->invalidateUser($user);
+
             return $this->serialize($resource->fresh(['attachments', 'tags', 'projects', 'areas']));
         });
     }
@@ -170,6 +175,7 @@ class ResourceService
             $resource->areas()->detach();
             $resource->projects()->detach();
             $resource->boardTasks()->detach();
+            app(ApiReadCacheService::class)->invalidateScope('user:'.$resource->user()->value('uuid'));
 
             if ($resource->archived_at === null) {
                 $resource->forceFill(['archived_at' => now()])->save();
@@ -222,7 +228,7 @@ class ResourceService
         if ($attachment->path) {
             Storage::disk('local')->delete($attachment->path);
         }
-        $attachment->delete();
+        $attachment->deleteOrFail();
 
         return $this->serialize($resource->fresh(['attachments', 'tags', 'projects', 'areas']));
     }

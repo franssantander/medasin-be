@@ -11,6 +11,7 @@ use App\Models\Board;
 use App\Models\BoardLabel;
 use App\Services\Trash\TrashService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class StandaloneBoardLabelController extends Controller
 {
@@ -21,7 +22,7 @@ class StandaloneBoardLabelController extends Controller
     public function store(StoreBoardLabelRequest $request, Board $board)
     {
         $board = $this->standaloneBoard($request->user(), $board);
-        $label = $board->labels()->create($request->validated());
+        $label = DB::transaction(fn (): BoardLabel => $board->labels()->create($request->validated()));
 
         return $this->success(BoardLabelData::fromModel($label)->toArray(), 'Successfully created board label.', 201);
     }
@@ -30,7 +31,7 @@ class StandaloneBoardLabelController extends Controller
     {
         $board = $this->standaloneBoard($request->user(), $board);
         $label = $this->boardLabel($board, $label);
-        $label->update($request->validated());
+        $label->updateOrFail($request->validated());
 
         return $this->success(BoardLabelData::fromModel($label->fresh())->toArray(), 'Successfully updated board label.');
     }

@@ -23,13 +23,15 @@ class JournalController extends Controller
 
     public function index(ListJournalEntryRequest $request): JsonResponse
     {
-        $entries = $this->journalService->listing(
-            $request->user(),
-            $request->validated('per_page', 15),
-        );
-        $entries->through(fn (JournalEntry $entry): array => JournalEntryResponseData::fromModel($entry)->toArray());
+        return $this->cached($request, function () use ($request): JsonResponse {
+            $entries = $this->journalService->listing(
+                $request->user(),
+                $request->validated('per_page', 15),
+            );
+            $entries->through(fn (JournalEntry $entry): array => JournalEntryResponseData::fromModel($entry)->toArray());
 
-        return $this->success($entries);
+            return $this->success($entries);
+        });
     }
 
     public function store(StoreJournalEntryRequest $request): JsonResponse
@@ -48,11 +50,11 @@ class JournalController extends Controller
 
     public function show(Request $request, JournalEntry $journalEntry): JsonResponse
     {
-        $entry = $this->journalService->find($request->user(), $journalEntry);
+        $entry = $request->user()->journalEntries()->whereKey($journalEntry->getKey())->firstOrFail();
 
-        return $this->success(
-            JournalEntryResponseData::fromModel($entry, includeContent: true)->toArray(),
-        );
+        return $this->cached($request, fn (): JsonResponse => $this->success(
+            JournalEntryResponseData::fromModel($this->journalService->find($request->user(), $entry), includeContent: true)->toArray(),
+        ));
     }
 
     public function update(UpdateJournalEntryRequest $request, JournalEntry $journalEntry): JsonResponse

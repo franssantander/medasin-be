@@ -23,12 +23,12 @@ class StandaloneNoteController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $notes = $request->user()->standaloneNotes()
-            ->orderByDesc('is_pinned')
-            ->latest('updated_at')
-            ->paginate(15);
-
-        return $this->success($notes);
+        return $this->cached($request, fn (): JsonResponse => $this->success(
+            $request->user()->standaloneNotes()
+                ->orderByDesc('is_pinned')
+                ->latest('updated_at')
+                ->paginate(15),
+        ));
     }
 
     public function store(StoreNoteRequest $request): JsonResponse
@@ -43,7 +43,9 @@ class StandaloneNoteController extends Controller
 
     public function show(Request $request, Note $note): JsonResponse
     {
-        return $this->success($this->standaloneNote($request->user(), $note));
+        $note = $this->standaloneNote($request->user(), $note);
+
+        return $this->cached($request, fn (): JsonResponse => $this->success($note));
     }
 
     public function update(UpdateNoteRequest $request, Note $note): JsonResponse
@@ -68,7 +70,7 @@ class StandaloneNoteController extends Controller
 
     public function tree(Request $request): JsonResponse
     {
-        return $this->success($this->noteService->tree($request->user()->standaloneNotes()));
+        return $this->cached($request, fn (): JsonResponse => $this->success($this->noteService->tree($request->user()->standaloneNotes())));
     }
 
     public function storeMedia(StoreNoteMediaRequest $request, Note $note): JsonResponse

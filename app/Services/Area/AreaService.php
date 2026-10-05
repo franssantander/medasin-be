@@ -3,6 +3,7 @@
 namespace App\Services\Area;
 
 use App\Models\Area;
+use App\Services\ApiReadCacheService;
 use Illuminate\Support\Facades\DB;
 
 class AreaService
@@ -19,9 +20,13 @@ class AreaService
                 $area->forceFill(['archived_at' => now()])->save();
             }
 
-            return $area->projects()
+            $moved = $area->projects()
                 ->whereNull('archived_at')
                 ->update(['area_id' => null]);
+
+            app(ApiReadCacheService::class)->invalidateScope('user:'.$area->user()->value('uuid'));
+
+            return $moved;
         });
     }
 }

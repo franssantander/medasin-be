@@ -129,7 +129,7 @@ class CalendarPlanService
             ]);
         }
 
-        $plan->save();
+        $plan->saveOrFail();
 
         return $plan->load(['project', 'area']);
     }

@@ -13,6 +13,7 @@ use App\Models\BoardTask;
 use App\Models\Project;
 use App\Services\Board\BoardTaskService;
 use App\Services\Trash\TrashService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class ProjectBoardTaskController extends Controller
@@ -28,15 +29,18 @@ class ProjectBoardTaskController extends Controller
     {
         $project = $this->ownedProject($request->user(), $project);
         $board = $this->ownedBoard($project, $board);
-        $tasks = $board->tasks()
-            ->with(['stage', 'labels', 'resources.areas', 'notes.area'])
-            ->join('board_stages', 'board_stages.id', '=', 'board_tasks.board_stage_id')
-            ->orderBy('board_stages.position')
-            ->orderBy('board_tasks.position')
-            ->select('board_tasks.*')
-            ->get();
 
-        return $this->success($tasks->map(fn (BoardTask $task): array => BoardTaskData::fromModel($task)->toArray())->all());
+        return $this->cached($request, function () use ($board): JsonResponse {
+            $tasks = $board->tasks()
+                ->with(['stage', 'labels', 'resources.areas', 'notes.area'])
+                ->join('board_stages', 'board_stages.id', '=', 'board_tasks.board_stage_id')
+                ->orderBy('board_stages.position')
+                ->orderBy('board_tasks.position')
+                ->select('board_tasks.*')
+                ->get();
+
+            return $this->success($tasks->map(fn (BoardTask $task): array => BoardTaskData::fromModel($task)->toArray())->all());
+        });
     }
 
     public function store(StoreBoardTaskRequest $request, Project $project, Board $board)
@@ -53,14 +57,18 @@ class ProjectBoardTaskController extends Controller
     {
         $project = $this->ownedProject($request->user(), $project);
         $board = $this->ownedBoard($project, $board);
-        $task = $this->boardTask($board, $task)->load([
-            'stage',
-            'labels',
-            'resources.areas',
-            'notes.area',
-        ]);
+        $task = $this->boardTask($board, $task);
 
-        return $this->success(BoardTaskData::fromModel($task)->toArray());
+        return $this->cached($request, function () use ($task): JsonResponse {
+            $task->load([
+                'stage',
+                'labels',
+                'resources.areas',
+                'notes.area',
+            ]);
+
+            return $this->success(BoardTaskData::fromModel($task)->toArray());
+        });
     }
 
     public function update(UpdateBoardTaskRequest $request, Project $project, Board $board, BoardTask $task)

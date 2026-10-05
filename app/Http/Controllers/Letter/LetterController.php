@@ -27,14 +27,17 @@ class LetterController extends Controller
     {
         $validated = $request->validated();
         $status = isset($validated['status']) ? LetterStatus::from($validated['status']) : null;
-        $letters = $this->letterService->listing(
-            $request->user(),
-            $status,
-            $validated['per_page'] ?? 15,
-        );
-        $letters->through(fn (Letter $letter): array => LetterResponseData::fromModel($letter)->toArray());
 
-        return $this->success($letters);
+        return $this->cached($request, function () use ($request, $status, $validated): JsonResponse {
+            $letters = $this->letterService->listing(
+                $request->user(),
+                $status,
+                $validated['per_page'] ?? 15,
+            );
+            $letters->through(fn (Letter $letter): array => LetterResponseData::fromModel($letter)->toArray());
+
+            return $this->success($letters);
+        });
     }
 
     public function store(StoreLetterRequest $request): JsonResponse
@@ -53,11 +56,11 @@ class LetterController extends Controller
 
     public function show(Request $request, Letter $letter): JsonResponse
     {
-        $letter = $this->letterService->find($request->user(), $letter);
+        $letter = $request->user()->letters()->whereKey($letter->getKey())->firstOrFail();
 
-        return $this->success(
-            LetterResponseData::fromModel($letter, includeContent: true)->toArray(),
-        );
+        return $this->cached($request, fn (): JsonResponse => $this->success(
+            LetterResponseData::fromModel($this->letterService->find($request->user(), $letter), includeContent: true)->toArray(),
+        ));
     }
 
     public function storeMedia(StoreLetterMediaRequest $request, Letter $letter): JsonResponse

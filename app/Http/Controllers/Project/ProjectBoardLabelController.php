@@ -11,7 +11,9 @@ use App\Models\Board;
 use App\Models\BoardLabel;
 use App\Models\Project;
 use App\Services\Trash\TrashService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class ProjectBoardLabelController extends Controller
 {
@@ -24,7 +26,7 @@ class ProjectBoardLabelController extends Controller
         $project = $this->ownedProject($request->user(), $project);
         $board = $this->ownedBoard($project, $board);
 
-        return $this->success($board->labels->map(fn (BoardLabel $label): array => BoardLabelData::fromModel($label)->toArray())->all());
+        return $this->cached($request, fn (): JsonResponse => $this->success($board->labels->map(fn (BoardLabel $label): array => BoardLabelData::fromModel($label)->toArray())->all()));
     }
 
     public function store(StoreBoardLabelRequest $request, Project $project, Board $board)
@@ -32,7 +34,7 @@ class ProjectBoardLabelController extends Controller
         $project = $this->ownedProject($request->user(), $project);
         $this->ensureProjectIsMutable($project);
         $board = $this->ownedBoard($project, $board);
-        $label = $board->labels()->create($request->validated());
+        $label = DB::transaction(fn (): BoardLabel => $board->labels()->create($request->validated()));
 
         return $this->success(BoardLabelData::fromModel($label)->toArray(), 'Successfully created board label.', 201);
     }
@@ -43,7 +45,7 @@ class ProjectBoardLabelController extends Controller
         $this->ensureProjectIsMutable($project);
         $board = $this->ownedBoard($project, $board);
         $label = $this->boardLabel($board, $label);
-        $label->update($request->validated());
+        $label->updateOrFail($request->validated());
 
         return $this->success(BoardLabelData::fromModel($label->fresh())->toArray(), 'Successfully updated board label.');
     }

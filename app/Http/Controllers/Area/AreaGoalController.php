@@ -11,7 +11,9 @@ use App\Http\Requests\Area\UpdateGoalRequest;
 use App\Models\Area;
 use App\Models\Goal;
 use App\Services\Trash\TrashService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class AreaGoalController extends Controller
@@ -27,32 +29,34 @@ class AreaGoalController extends Controller
             'filter' => ['sometimes', Rule::in(['all', 'active', 'completed', 'cancelled'])],
         ])['filter'] ?? 'all';
 
-        $goals = $area->goals();
-        $counts = [
-            'all' => (clone $goals)->count(),
-            'active' => (clone $goals)->whereIn('status', [GoalStatus::PENDING->value, GoalStatus::IN_PROGRESS->value])->count(),
-            'completed' => (clone $goals)->where('status', GoalStatus::COMPLETED->value)->count(),
-            'cancelled' => (clone $goals)->where('status', GoalStatus::CANCELLED->value)->count(),
-        ];
+        return $this->cached($request, function () use ($area, $filter): JsonResponse {
+            $goals = $area->goals();
+            $counts = [
+                'all' => (clone $goals)->count(),
+                'active' => (clone $goals)->whereIn('status', [GoalStatus::PENDING->value, GoalStatus::IN_PROGRESS->value])->count(),
+                'completed' => (clone $goals)->where('status', GoalStatus::COMPLETED->value)->count(),
+                'cancelled' => (clone $goals)->where('status', GoalStatus::CANCELLED->value)->count(),
+            ];
 
-        $goals = match ($filter) {
-            'active' => $goals->whereIn('status', [GoalStatus::PENDING->value, GoalStatus::IN_PROGRESS->value]),
-            'completed' => $goals->where('status', GoalStatus::COMPLETED->value),
-            'cancelled' => $goals->where('status', GoalStatus::CANCELLED->value),
-            default => $goals,
-        };
+            $goals = match ($filter) {
+                'active' => $goals->whereIn('status', [GoalStatus::PENDING->value, GoalStatus::IN_PROGRESS->value]),
+                'completed' => $goals->where('status', GoalStatus::COMPLETED->value),
+                'cancelled' => $goals->where('status', GoalStatus::CANCELLED->value),
+                default => $goals,
+            };
 
-        return $this->success([
-            'items' => $goals->latest()->paginate(15),
-            'counts' => $counts,
-        ]);
+            return $this->success([
+                'items' => $goals->latest()->paginate(15),
+                'counts' => $counts,
+            ]);
+        });
     }
 
     public function store(StoreGoalRequest $request, Area $area)
     {
         $area = $this->ownedArea($request->user(), $area);
         $this->ensureAreaIsMutable($area);
-        $goal = $area->goals()->create($this->goalData(GoalData::from($request->validated())->toArray()));
+        $goal = DB::transaction(fn (): Goal => $area->goals()->create($this->goalData(GoalData::from($request->validated())->toArray())));
 
         return $this->success($goal, 'Successfully created goal.', 201);
     }
@@ -60,8 +64,9 @@ class AreaGoalController extends Controller
     public function show(Request $request, Area $area, Goal $goal)
     {
         $area = $this->ownedArea($request->user(), $area);
+        $goal = $area->goals()->whereKey($goal->getKey())->firstOrFail();
 
-        return $this->success($area->goals()->whereKey($goal->getKey())->firstOrFail());
+        return $this->cached($request, fn (): JsonResponse => $this->success($goal));
     }
 
     public function update(UpdateGoalRequest $request, Area $area, Goal $goal)
@@ -69,7 +74,7 @@ class AreaGoalController extends Controller
         $area = $this->ownedArea($request->user(), $area);
         $this->ensureAreaIsMutable($area);
         $goal = $area->goals()->whereKey($goal->getKey())->firstOrFail();
-        $goal->update($this->goalData(GoalData::from($request->validated())->toArray(), $goal));
+        $goal->updateOrFail($this->goalData(GoalData::from($request->validated())->toArray(), $goal));
 
         return $this->success($goal->fresh(), 'Successfully updated goal.');
     }

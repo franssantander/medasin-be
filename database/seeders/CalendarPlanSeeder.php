@@ -32,6 +32,6 @@ class CalendarPlanSeeder extends Seeder
             'timezone' => 'Asia/Manila',
             'starts_at' => $start->utc(),
             'is_all_day' => true,
-        ])->save();
+        ])->saveOrFail();
     }
 }

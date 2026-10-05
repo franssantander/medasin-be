@@ -23,9 +23,12 @@ class CalendarPlanController extends Controller
     public function index(ListCalendarPlanRequest $request): JsonResponse
     {
         $data = $request->validated();
-        $plans = $this->calendarPlans->listing($request->user(), $data['start_date'], $data['end_date'], $data['timezone']);
 
-        return $this->success($plans->map(fn (CalendarPlan $plan): array => CalendarPlanData::fromModel($plan)->toArray())->all());
+        return $this->cached($request, function () use ($request, $data): JsonResponse {
+            $plans = $this->calendarPlans->listing($request->user(), $data['start_date'], $data['end_date'], $data['timezone']);
+
+            return $this->success($plans->map(fn (CalendarPlan $plan): array => CalendarPlanData::fromModel($plan)->toArray())->all());
+        });
     }
 
     public function upcoming(Request $request): JsonResponse
@@ -48,9 +51,9 @@ class CalendarPlanController extends Controller
 
     public function show(Request $request, CalendarPlan $calendarPlan): JsonResponse
     {
-        $plan = $this->calendarPlans->owned($request->user(), $calendarPlan)->load(['project', 'area']);
+        $plan = $this->calendarPlans->owned($request->user(), $calendarPlan);
 
-        return $this->success(CalendarPlanData::fromModel($plan)->toArray());
+        return $this->cached($request, fn (): JsonResponse => $this->success(CalendarPlanData::fromModel($plan->load(['project', 'area']))->toArray()));
     }
 
     public function update(UpdateCalendarPlanRequest $request, CalendarPlan $calendarPlan): JsonResponse

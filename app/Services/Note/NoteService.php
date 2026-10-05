@@ -62,7 +62,7 @@ class NoteService
         $parent = $this->resolveParent($notes, Arr::pull($attributes, 'parent_uuid'), null, $parentErrorMessage);
         $attributes['parent_id'] = $parent?->getKey();
 
-        return $notes->create($attributes)->fresh();
+        return DB::transaction(fn (): Note => $notes->create($attributes)->fresh());
     }
 
     public function update(
@@ -77,7 +77,7 @@ class NoteService
             $attributes['parent_id'] = $parent?->getKey();
         }
 
-        $note->update($attributes);
+        $note->updateOrFail($attributes);
 
         return $note->fresh();
     }
