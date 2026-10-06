@@ -11,6 +11,7 @@
         "laravel/passport": "^13.0",
         "laravel/reverb": "^1.12",
         "laravel/sanctum": "^4.0",
+        "laravel/socialite": "^5.0",
         "laravel/tinker": "^3.0",
         "spatie/laravel-data": "^4.23"
     },

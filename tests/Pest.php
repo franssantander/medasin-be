@@ -3,7 +3,10 @@
 use Tests\Feature\Auth\AuthTestCase;
 use Tests\TestCase;
 
-pest()->extend(AuthTestCase::class)->in('Feature/Auth/AuthenticationWorkflowTest.php');
+pest()->extend(AuthTestCase::class)->in(
+    'Feature/Auth/AuthenticationWorkflowTest.php',
+    'Feature/Auth/GoogleAuthenticationTest.php',
+);
 
 pest()->extend(TestCase::class)->in(
     'Feature/Area',

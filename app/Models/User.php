@@ -18,7 +18,7 @@ use Laravel\Passport\Contracts\OAuthenticatable;
 use Laravel\Passport\HasApiTokens;
 
 #[Fillable(['first_name', 'last_name', 'email', 'username', 'status', 'password'])]
-#[Hidden(['password', 'remember_token', 'profile_image_path'])]
+#[Hidden(['password', 'remember_token', 'profile_image_path', 'google_id'])]
 class User extends Authenticatable implements MustVerifyEmail, OAuthenticatable
 {
     use HasApiTokens, HasFactory, HasUuid, Notifiable;

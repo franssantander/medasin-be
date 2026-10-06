@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\Auth\GoogleAuthController;
+use App\Http\Middleware\GoogleOAuthSession;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')
@@ -20,4 +22,14 @@ Route::prefix('auth')
             Route::get('me', 'me')->middleware('verified.api')->name('me');
             Route::post('logout', 'logout')->name('logout');
         });
+    });
+
+Route::prefix('auth/google')
+    ->name('auth.google.')
+    ->middleware(GoogleOAuthSession::class)
+    ->controller(GoogleAuthController::class)
+    ->group(function (): void {
+        Route::get('redirect', 'redirect')->block(30, 5)->name('redirect');
+        Route::get('callback', 'callback')->block(30, 5)->name('callback');
+        Route::post('link', 'link')->middleware(['auth:api', 'verified.api'])->block(30, 5)->name('link');
     });
