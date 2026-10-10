@@ -22,15 +22,7 @@ class PlanSeeder extends Seeder
                 'currency' => Currency::Peso,
                 'price' => 0,
                 'is_active' => true,
-                'limits' => [
-                    'journal_entries' => null,
-                    'notes' => null,
-                    'attachments_mb' => 500,
-                    'reminders' => 10,
-                    'pomodoro' => null,
-                    'kanban_boards' => 3,
-                    'kanban_tasks' => 100,
-                ],
+                'limits' => config('plans.limits.free'),
             ],
             [
                 'name' => 'Focus',
@@ -40,15 +32,7 @@ class PlanSeeder extends Seeder
                 // TODO: confirm actual price with product before launch
                 'price' => 99,
                 'is_active' => true,
-                'limits' => [
-                    'journal_entries' => null,
-                    'notes' => null,
-                    'attachments_mb' => 5120,
-                    'reminders' => null,
-                    'pomodoro' => null,
-                    'kanban_boards' => 10,
-                    'kanban_tasks' => null,
-                ],
+                'limits' => config('plans.limits.focus'),
             ],
             [
                 'name' => 'Clarity',
@@ -58,21 +42,21 @@ class PlanSeeder extends Seeder
                 // TODO: confirm actual price with product before launch
                 'price' => 149,
                 'is_active' => true,
-                'limits' => [
-                    'journal_entries' => null,
-                    'notes' => null,
-                    'attachments_mb' => 25600,
-                    'reminders' => null,
-                    'pomodoro' => null,
-                    'kanban_boards' => null,
-                    'kanban_tasks' => null,
-                ],
+                'limits' => config('plans.limits.clarity'),
             ],
         ];
 
         DB::transaction(function () use ($plans): void {
             foreach ($plans as $plan) {
-                Plan::updateOrCreate(['slug' => $plan['slug']], $plan);
+                $definition = Plan::withTrashed()->firstOrNew(['slug' => $plan['slug']]);
+                if ($definition->exists) {
+                    unset($plan['is_active']);
+                }
+                $plan['limits'] = [
+                    ...$plan['limits'],
+                    ...array_fill_keys(config('plans.deprecated_limits'), null),
+                ];
+                $definition->fill($plan)->save();
             }
         });
     }

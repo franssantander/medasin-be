@@ -3,16 +3,16 @@
 namespace Database\Factories;
 
 use App\Enum\Currency;
-use App\Models\Model;
 use App\Models\Plan;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends Factory<Model>
+ * @extends Factory<Plan>
  */
 class PlanFactory extends Factory
 {
     protected $model = Plan::class;
+
     /**
      * Define the model's default state.
      *
@@ -28,13 +28,8 @@ class PlanFactory extends Factory
             'price' => fake()->numberBetween(0, 5000),
             'is_active' => true,
             'limits' => [
-                'journal_entries' => null,
-                'notes' => null,
-                'attachments_mb' => 500,
-                'reminders' => 10,
-                'pomodoro' => null,
-                'kanban_boards' => 5,
-                'kanban_tasks' => 100,
+                ...config('plans.limits.free'),
+                ...array_fill_keys(config('plans.deprecated_limits'), null),
             ],
         ];
     }

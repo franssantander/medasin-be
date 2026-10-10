@@ -14,7 +14,9 @@ class PlanController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        return $this->cached($request, fn (): JsonResponse => $this->success(Plan::all()));
+        return $this->cached($request, fn (): JsonResponse => $this->success(
+            Plan::query()->where('is_active', true)->orderBy('id')->get(),
+        ));
     }
 
     /**

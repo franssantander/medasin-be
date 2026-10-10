@@ -51,6 +51,14 @@ class ResourceController extends Controller
         return $this->success($this->service->update($request->user(), $resource, $request->validated()), 'Successfully updated resource.');
     }
 
+    public function destroy(Request $request, Resource $resource): JsonResponse
+    {
+        $resource = $request->user()->resources()->whereKey($resource->getKey())->firstOrFail();
+        $this->trashService->delete($request->user(), $resource, 'resource', $resource->title);
+
+        return $this->success(null, 'Resource moved to Trash. It will be permanently deleted after 30 days.');
+    }
+
     public function storeAttachment(StoreResourceAttachmentRequest $request, Resource $resource): JsonResponse
     {
         $resource = $request->user()->resources()->whereKey($resource->getKey())->whereNull('archived_at')->firstOrFail();

@@ -19,6 +19,7 @@ use App\Models\Resource;
 use App\Models\ResourceAttachment;
 use App\Models\TrashEntry;
 use App\Models\User;
+use App\Services\Profile\FileCleanupService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -26,11 +27,16 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class TrashService
 {
-    public const TYPES = ['area', 'project', 'board', 'task', 'goal', 'habit', 'note', 'journal_entry', 'letter', 'board_label', 'resource_attachment', 'calendar_plan'];
+    public const TYPES = ['area', 'project', 'resource', 'board', 'task', 'goal', 'habit', 'note', 'journal_entry', 'letter', 'board_label', 'resource_attachment', 'calendar_plan'];
+
+    public function __construct(private readonly FileCleanupService $fileCleanup) {}
 
     public function delete(User $user, Model $subject, string $itemType, string $title, ?string $context = null): TrashEntry
     {
         return DB::transaction(function () use ($user, $subject, $itemType, $title, $context): TrashEntry {
+            if ($subject instanceof Area || $subject instanceof Project || $subject instanceof Resource) {
+                User::query()->lockForUpdate()->findOrFail($user->getKey());
+            }
             $deletedAt = now();
             $subject->delete();
 
@@ -113,6 +119,9 @@ class TrashService
     public function restore(TrashEntry $entry): void
     {
         DB::transaction(function () use ($entry): void {
+            if (in_array($entry->subject_type, [Area::class, Project::class, Resource::class], true)) {
+                User::query()->lockForUpdate()->findOrFail($entry->user_id);
+            }
             $entry = TrashEntry::query()->lockForUpdate()->findOrFail($entry->getKey());
             $subject = $this->subject($entry);
             $this->ensureParentAvailable($entry, $subject);
@@ -148,6 +157,9 @@ class TrashService
     public function forceDelete(TrashEntry $entry): void
     {
         DB::transaction(function () use ($entry): void {
+            if ($entry->subject_type === Resource::class) {
+                User::query()->lockForUpdate()->findOrFail($entry->user_id);
+            }
             $entry = TrashEntry::query()->lockForUpdate()->findOrFail($entry->getKey());
             $subject = $this->subject($entry);
 
@@ -155,6 +167,8 @@ class TrashService
                 $this->purgeArea($entry, $subject);
             } elseif ($subject instanceof Project) {
                 $this->purgeProject($entry, $subject);
+            } elseif ($subject instanceof Resource) {
+                $this->purgeResource($entry, $subject);
             } elseif ($subject instanceof Board) {
                 $this->purgeBoard($entry, $subject);
             } elseif ($subject instanceof Note) {
@@ -224,7 +238,7 @@ class TrashService
     private function subject(TrashEntry $entry): Model
     {
         $class = $entry->subject_type;
-        $allowed = [Area::class, Project::class, Board::class, BoardTask::class, Goal::class, Habit::class, Note::class, JournalEntry::class, Letter::class, BoardLabel::class, ResourceAttachment::class, CalendarPlan::class];
+        $allowed = [Area::class, Project::class, Resource::class, Board::class, BoardTask::class, Goal::class, Habit::class, Note::class, JournalEntry::class, Letter::class, BoardLabel::class, ResourceAttachment::class, CalendarPlan::class];
         abort_unless(in_array($class, $allowed, true), 404);
 
         return $class::withTrashed()->findOrFail($entry->subject_id);
@@ -303,6 +317,15 @@ class TrashService
         );
         $this->removeEntries(Board::class, $boards->pluck('id'), $entry);
         $project->forceDelete();
+    }
+
+    private function purgeResource(TrashEntry $entry, Resource $resource): void
+    {
+        $attachments = $resource->attachments()->withTrashed()->get(['id', 'path']);
+        $paths = $attachments->pluck('path')->filter()->unique()->values()->all();
+        $this->fileCleanup->deleteOrQueue(['local' => $paths]);
+        $this->removeEntries(ResourceAttachment::class, $attachments->pluck('id'), $entry);
+        $resource->forceDelete();
     }
 
     private function purgeBoard(TrashEntry $entry, Board $board): void

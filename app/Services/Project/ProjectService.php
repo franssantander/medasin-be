@@ -2,11 +2,15 @@
 
 namespace App\Services\Project;
 
+use App\Data\Area\AreaData;
 use App\Data\Project\ProjectAreaData;
 use App\Data\Project\ProjectData;
+use App\Enum\CoreFeature;
 use App\Models\Project;
 use App\Models\User;
+use App\Services\Area\AreaService;
 use App\Services\Board\BoardService;
+use App\Services\Plan\PlanQuotaService;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -14,12 +18,17 @@ use Illuminate\Validation\ValidationException;
 
 class ProjectService
 {
-    public function __construct(private readonly BoardService $boardService) {}
+    public function __construct(
+        private readonly BoardService $boardService,
+        private readonly AreaService $areaService,
+        private readonly PlanQuotaService $quota,
+    ) {}
 
     public function create(User $user, ProjectData $data): Project
     {
         $request = $data->toArray();
-        $data = DB::transaction(function () use ($request, $user) {
+        $data = $this->quota->transaction($user, function (User $user) use ($request): Project {
+            $this->quota->assertCanIncrease($user, CoreFeature::PROJECTS);
             if (isset($request['area_uuid'])) {
                 $area = $user->areas()
                     ->whereNull('archived_at')
@@ -45,7 +54,7 @@ class ProjectService
                         ]);
                     }
 
-                    $area = $user->areas()->create(['name' => $areaName]);
+                    $area = $this->areaService->create($user, AreaData::from(['name' => $areaName]));
                 }
             }
 
@@ -68,7 +77,7 @@ class ProjectService
     {
         $request = $data->toArray();
 
-        return DB::transaction(function () use ($user, $project, $request) {
+        return $this->quota->transaction($user, function (User $user) use ($project, $request): Project {
             if (! isset($request['area_uuid']) && ! isset($request['area_name'])) {
                 $project->area()->dissociate();
                 $project->save();
@@ -98,7 +107,7 @@ class ProjectService
                         ]);
                     }
 
-                    $area = $user->areas()->create(['name' => $areaName]);
+                    $area = $this->areaService->create($user, AreaData::from(['name' => $areaName]));
                 }
             }
 

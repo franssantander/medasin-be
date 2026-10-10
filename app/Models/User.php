@@ -53,6 +53,11 @@ class User extends Authenticatable implements MustVerifyEmail, OAuthenticatable
         return $this->hasMany(Area::class);
     }
 
+    public function planAssignments(): HasMany
+    {
+        return $this->hasMany(PlanAssignment::class);
+    }
+
     public function habits(): HasMany
     {
         return $this->hasMany(Habit::class);

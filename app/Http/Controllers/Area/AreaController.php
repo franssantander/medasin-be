@@ -68,30 +68,11 @@ class AreaController extends Controller
      */
     public function store(StoreAreaRequest $request)
     {
-        $attributes = AreaData::from(Arr::except($request->validated(), ['background_image']))->toArray();
-
-        $data = DB::transaction(function () use ($request, $attributes): Area {
-            $user = User::query()->lockForUpdate()->findOrFail($request->user()->getKey());
-
-            if ($request->hasFile('background_image')) {
-                $image = $request->file('background_image');
-                $filename = $image->hashName();
-                $path = "areas/backgrounds/{$filename}";
-                DB::afterRollBack(function () use ($path): void {
-                    try {
-                        $this->fileCleanup->deleteOrQueue(['public' => [$path]]);
-                    } catch (Throwable $exception) {
-                        report($exception);
-                    }
-                });
-                if ($image->storeAs('areas/backgrounds', $filename, 'public') === false) {
-                    throw new RuntimeException('Unable to store area background image.');
-                }
-                $attributes['background_image'] = $path;
-            }
-
-            return $user->areas()->create($attributes);
-        });
+        $data = $this->areaService->create(
+            $request->user(),
+            AreaData::from(Arr::except($request->validated(), ['background_image'])),
+            $request->file('background_image'),
+        );
 
         return $this->success($data, 'Successfully created area.', 201);
     }

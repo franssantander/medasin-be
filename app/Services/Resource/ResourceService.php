@@ -5,10 +5,12 @@ namespace App\Services\Resource;
 use App\Data\Resource\ListResourceData;
 use App\Data\Resource\ResourceData;
 use App\Data\Resource\StoreResourceData;
+use App\Enum\CoreFeature;
 use App\Models\Resource;
 use App\Models\ResourceTag;
 use App\Models\User;
 use App\Services\ApiReadCacheService;
+use App\Services\Plan\PlanQuotaService;
 use App\Services\Profile\FileCleanupService;
 use App\Services\Search\SearchText;
 use Illuminate\Support\Facades\DB;
@@ -20,6 +22,7 @@ class ResourceService
 {
     public function __construct(
         private readonly FileCleanupService $fileCleanup,
+        private readonly PlanQuotaService $quota,
     ) {}
 
     public function tags(User $user): array
@@ -77,8 +80,8 @@ class ResourceService
 
     public function create(User $user, StoreResourceData $data): array
     {
-        return DB::transaction(function () use ($user, $data): array {
-            $user = User::query()->lockForUpdate()->findOrFail($user->getKey());
+        return $this->quota->transaction($user, function (User $user) use ($data): array {
+            $this->quota->assertCanIncrease($user, CoreFeature::RESOURCES);
             $resource = $user->resources()->create([
                 'title' => $data->title,
                 'icon' => $data->icon,

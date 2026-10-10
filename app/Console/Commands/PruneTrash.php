@@ -16,6 +16,10 @@ class PruneTrash extends Command
     {
         $count = 0;
         TrashEntry::query()->where('expires_at', '<=', now())->orderBy('id')->eachById(function (TrashEntry $entry) use ($trashService, &$count): void {
+            $entry = $entry->fresh();
+            if ($entry === null) {
+                return;
+            }
             $trashService->forceDelete($entry);
             $count++;
         });

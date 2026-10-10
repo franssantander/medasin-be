@@ -7,6 +7,7 @@ Route::middleware('throttle:api')->group(function (): void {
     require __DIR__.'/v1/plan.php';
 
     Route::middleware(['auth:api', 'verified.api'])->group(function (): void {
+        require __DIR__.'/v1/subscription.php';
         require __DIR__.'/v1/home.php';
         require __DIR__.'/v1/calendar.php';
         require __DIR__.'/v1/notification.php';

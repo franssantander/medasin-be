@@ -21,6 +21,7 @@ use App\Models\LetterMedia;
 use App\Models\Note;
 use App\Models\NoteMedia;
 use App\Models\Plan;
+use App\Models\PlanAssignment;
 use App\Models\Project;
 use App\Models\Resource;
 use App\Models\ResourceAttachment;
@@ -39,7 +40,7 @@ class ApiReadCacheInvalidator
     private const OWNED_MODELS = [
         Area::class, Board::class, CalendarPlan::class, FocusSession::class,
         FocusSetting::class, FocusTask::class, Habit::class, JournalEntry::class,
-        Letter::class, Note::class, Project::class, Resource::class,
+        Letter::class, Note::class, PlanAssignment::class, Project::class, Resource::class,
         ResourceTag::class, TrashEntry::class,
     ];
 

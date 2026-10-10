@@ -102,6 +102,15 @@ class ApiResponder
             $payload['errors'] = $errors;
         }
 
+        if ($exception instanceof PlanLimitExceededException) {
+            $payload['code'] = 'PLAN_LIMIT_EXCEEDED';
+            $payload['meta'] = [
+                'feature' => $exception->feature->value,
+                'usage' => $exception->usage,
+                'limit' => $exception->limit,
+            ];
+        }
+
         if ($exception && config('app.debug') && ! App::environment('production')) {
             $payload['debug'] = [
                 'exception' => get_class($exception),
