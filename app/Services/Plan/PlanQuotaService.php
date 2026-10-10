@@ -35,22 +35,41 @@ class PlanQuotaService
         if (DB::transactionLevel() === 0) {
             throw new LogicException('Quota checks require an account transaction.');
         }
+
+        $violation = $this->increaseViolations($user, [$feature], $increment)[$feature->value] ?? null;
+        if ($violation !== null) {
+            throw $violation;
+        }
+    }
+
+    /**
+     * @param  list<CoreFeature>  $features
+     * @return array<string, PlanLimitExceededException>
+     */
+    public function increaseViolations(User $user, array $features, int $increment = 1): array
+    {
         if ($increment < 1) {
             throw new InvalidArgumentException('Quota increments must be positive.');
         }
-        if (! config('plans.enforcement_enabled')) {
-            return;
+        if ($features === [] || ! config('plans.enforcement_enabled')) {
+            return [];
         }
 
-        $limit = $this->entitlements->resolve($user)['limits'][$feature->value];
-        if ($limit === null) {
-            return;
+        $limits = $this->entitlements->resolve($user)['limits'];
+        $violations = [];
+        foreach ($features as $feature) {
+            $limit = $limits[$feature->value];
+            if ($limit === null) {
+                continue;
+            }
+
+            $usage = $user->{$feature->value}()->count();
+            if ($usage + $increment > $limit) {
+                $violations[$feature->value] = new PlanLimitExceededException($feature, $usage, $limit);
+            }
         }
 
-        $usage = $user->{$feature->value}()->count();
-        if ($usage + $increment > $limit) {
-            throw new PlanLimitExceededException($feature, $usage, $limit);
-        }
+        return $violations;
     }
 
     /** @return array{projects: int, areas: int, resources: int} */

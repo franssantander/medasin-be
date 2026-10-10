@@ -2,11 +2,13 @@
 
 namespace Database\Seeders;
 
-use App\Models\Area;
 use App\Models\User;
+use App\Services\Profile\FileCleanupService;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use RuntimeException;
+use Throwable;
 
 class AreaSeeder extends Seeder
 {
@@ -53,22 +55,38 @@ class AreaSeeder extends Seeder
             ],
         ];
 
-        foreach ($areas as $area) {
-            $slug = str($area['name'])->slug()->toString();
-            $imagePath = "areas/backgrounds/seed/{$slug}.png";
-            $sourcePath = database_path("seeders/assets/areas/{$slug}.png");
+        DB::transaction(function () use ($user, $areas): void {
+            foreach ($areas as $area) {
+                $slug = str($area['name'])->slug()->toString();
+                $imagePath = "areas/backgrounds/seed/{$user->uuid}/{$slug}.png";
+                if (! Storage::disk('public')->exists($imagePath)) {
+                    $contents = file_get_contents(database_path("seeders/assets/areas/{$slug}.png"));
+                    if ($contents === false) {
+                        throw new RuntimeException('Unable to read demo Area image.');
+                    }
 
-            Storage::disk('public')->put($imagePath, file_get_contents($sourcePath));
+                    DB::afterRollBack(function () use ($imagePath): void {
+                        try {
+                            app(FileCleanupService::class)->deleteOrQueue(['public' => [$imagePath]]);
+                        } catch (Throwable $exception) {
+                            report($exception);
+                        }
+                    });
+                    if (! Storage::disk('public')->put($imagePath, $contents)) {
+                        throw new RuntimeException('Unable to store demo Area image.');
+                    }
+                }
 
-            DB::transaction(fn (): Area => $user->areas()->updateOrCreate(
-                ['slug' => $slug],
-                [
-                    ...$area,
-                    'background' => '#000000',
-                    'background_image' => $imagePath,
-                    'archived_at' => null,
-                ],
-            ));
-        }
+                $user->areas()->updateOrCreate(
+                    ['slug' => $slug],
+                    [
+                        ...$area,
+                        'background' => '#000000',
+                        'background_image' => $imagePath,
+                        'archived_at' => null,
+                    ],
+                );
+            }
+        });
     }
 }

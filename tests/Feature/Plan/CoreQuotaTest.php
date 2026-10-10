@@ -4,6 +4,9 @@ use App\Models\Plan;
 use App\Models\PlanAssignment;
 use App\Models\TrashEntry;
 use App\Models\User;
+use App\Services\Board\BoardService;
+use App\Services\Board\BoardTaskService;
+use App\Services\Trash\TrashService;
 use Database\Seeders\PlanSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -148,7 +151,7 @@ it('counts archived items toward the corresponding cap', function (
     'resources' => ['resources', 'resource.archive', 'resource.store', 'title'],
 ]);
 
-it('releases trashed usage and allows recovery beyond the cap', function (string $feature, string $prefix, string $field): void {
+it('returns 403 for Core recovery at the cap and restores after capacity is freed', function (string $feature, string $prefix, string $field): void {
     $this->seed(PlanSeeder::class);
     Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 1, 'areas' => 1, 'resources' => 1]]);
     $user = User::factory()->create();
@@ -158,20 +161,345 @@ it('releases trashed usage and allows recovery beyond the cap', function (string
 
     $this->deleteJson(route($prefix.'.destroy', $item))->assertOk();
     $this->postJson(route($prefix.'.store'), [$field => 'Replacement item'])->assertCreated();
+    $replacement = $user->{$feature}()->sole();
     $entry = TrashEntry::where('subject_uuid', $item->uuid)->sole();
-    $this->postJson(route('trash.restore', $entry))->assertOk();
-    $this->postJson(route($prefix.'.store'), [$field => 'Another item'])->assertForbidden()
-        ->assertJsonPath('code', 'PLAN_LIMIT_EXCEEDED')
-        ->assertJsonPath('meta', ['feature' => $feature, 'usage' => 2, 'limit' => 1]);
+    $this->getJson(route('trash.index', ['type' => $prefix]))->assertOk()
+        ->assertJsonPath('data.total', 1)
+        ->assertJsonPath('data.data.0.uuid', $entry->uuid)
+        ->assertJsonPath('data.data.0.can_restore', false)
+        ->assertJsonPath('data.data.0.restore_block_reason', "The {$feature} limit for your current plan has been reached.");
 
-    expect($user->{$feature}()->count())->toBe(2);
+    $this->postJson(route('trash.restore', $entry))->assertForbidden()
+        ->assertJsonPath('code', 'PLAN_LIMIT_EXCEEDED')
+        ->assertJsonPath('message', "The {$feature} limit for your current plan has been reached.")
+        ->assertJsonPath('data', null)
+        ->assertJsonPath('status', 403)
+        ->assertJsonPath('meta', ['feature' => $feature, 'usage' => 1, 'limit' => 1]);
+
+    $this->assertSoftDeleted($item);
+    $this->assertNotSoftDeleted($replacement);
+    $this->assertModelExists($entry);
+    expect($user->{$feature}()->count())->toBe(1);
     $this->assertDatabaseCount($feature, 2);
+    $this->assertDatabaseCount('trash_entries', 1);
+
+    $this->deleteJson(route($prefix.'.destroy', $replacement))->assertOk();
+    $this->getJson(route('trash.index', ['type' => $prefix, 'search' => $item->{$field}]))->assertOk()
+        ->assertJsonPath('data.total', 1)
+        ->assertJsonPath('data.data.0.uuid', $entry->uuid)
+        ->assertJsonPath('data.data.0.can_restore', true)
+        ->assertJsonPath('data.data.0.restore_block_reason', null);
+    $this->postJson(route('trash.restore', $entry))->assertOk();
+
+    $this->assertNotSoftDeleted($item);
+    $this->assertSoftDeleted($replacement);
     $this->assertModelMissing($entry);
+    expect($user->{$feature}()->count())->toBe(1);
+    $this->assertDatabaseCount('trash_entries', 1);
 })->with([
     'projects' => ['projects', 'project', 'name'],
     'areas' => ['areas', 'area', 'name'],
     'resources' => ['resources', 'resource', 'title'],
 ]);
+
+it('returns 403 for Core recovery with a zero limit or existing over-cap usage', function (
+    string $feature, string $prefix, int $limit, int $usage,
+): void {
+    $this->seed(PlanSeeder::class);
+    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => $limit, 'areas' => $limit, 'resources' => $limit]]);
+    $user = User::factory()->create();
+    createQuotaItems($user, $feature, 1, [$feature === 'resources' ? 'title' : 'name' => 'Trashed item']);
+    $item = $user->{$feature}()->sole();
+    Passport::actingAs($user);
+    $this->deleteJson(route($prefix.'.destroy', $item))->assertOk();
+    createQuotaItems($user, $feature, $usage);
+    $entry = TrashEntry::where('subject_uuid', $item->uuid)->sole();
+
+    $this->getJson(route('trash.index', ['type' => $prefix]))->assertOk()
+        ->assertJsonPath('data.data.0.can_restore', false)
+        ->assertJsonPath('data.data.0.restore_block_reason', "The {$feature} limit for your current plan has been reached.");
+    $this->postJson(route('trash.restore', $entry))->assertForbidden()
+        ->assertJsonPath('code', 'PLAN_LIMIT_EXCEEDED')
+        ->assertJsonPath('meta', ['feature' => $feature, 'usage' => $usage, 'limit' => $limit]);
+
+    $this->assertSoftDeleted($item);
+    $this->assertModelExists($entry);
+    expect($user->{$feature}()->count())->toBe($usage);
+    $this->assertDatabaseCount($feature, $usage + 1);
+})->with([
+    'projects with zero allowance' => ['projects', 'project', 0, 0],
+    'areas with zero allowance' => ['areas', 'area', 0, 0],
+    'resources with zero allowance' => ['resources', 'resource', 0, 0],
+    'projects already over cap' => ['projects', 'project', 1, 2],
+    'areas already over cap' => ['areas', 'area', 1, 2],
+    'resources already over cap' => ['resources', 'resource', 1, 2],
+]);
+
+it('rechecks the final recovery slot after an earlier listing allowed two entries', function (): void {
+    $this->seed(PlanSeeder::class);
+    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 1]]);
+    $user = User::factory()->create();
+    $first = $user->resources()->create(['title' => 'First reference']);
+    $second = $user->resources()->create(['title' => 'Second reference']);
+    Passport::actingAs($user);
+    $this->deleteJson(route('resource.destroy', $first))->assertOk();
+    $this->deleteJson(route('resource.destroy', $second))->assertOk();
+    $firstEntry = TrashEntry::where('subject_uuid', $first->uuid)->sole();
+    $secondEntry = TrashEntry::where('subject_uuid', $second->uuid)->sole();
+    $this->getJson(route('trash.index', ['type' => 'resource']))->assertOk()
+        ->assertJsonPath('data.total', 2)
+        ->assertJsonPath('data.data.0.can_restore', true)
+        ->assertJsonPath('data.data.1.can_restore', true);
+
+    $this->postJson(route('trash.restore', $firstEntry))->assertOk();
+    $this->postJson(route('trash.restore', $secondEntry))->assertForbidden()
+        ->assertJsonPath('code', 'PLAN_LIMIT_EXCEEDED')
+        ->assertJsonPath('meta', ['feature' => 'resources', 'usage' => 1, 'limit' => 1]);
+
+    $this->assertNotSoftDeleted($first);
+    $this->assertSoftDeleted($second);
+    $this->assertModelMissing($firstEntry);
+    $this->assertModelExists($secondEntry);
+    expect($user->resources()->count())->toBe(1);
+});
+
+it('requires capacity for archived Core recovery and preserves the archive state', function (
+    string $feature, string $prefix, string $field,
+): void {
+    $this->seed(PlanSeeder::class);
+    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 1, 'areas' => 1, 'resources' => 1]]);
+    $user = User::factory()->create();
+    createQuotaItems($user, $feature, 1, ['archived_at' => '2026-09-01 12:00:00']);
+    $item = $user->{$feature}()->sole();
+    $entry = app(TrashService::class)->delete($user, $item, $prefix, $item->{$field});
+    createQuotaItems($user, $feature, 1, [$field => 'Replacement item']);
+    $replacement = $user->{$feature}()->sole();
+    Passport::actingAs($user);
+
+    $this->postJson(route('trash.restore', $entry))->assertForbidden()
+        ->assertJsonPath('code', 'PLAN_LIMIT_EXCEEDED')
+        ->assertJsonPath('meta', ['feature' => $feature, 'usage' => 1, 'limit' => 1]);
+
+    $this->assertSoftDeleted($item);
+    $this->assertModelExists($entry);
+    $this->deleteJson(route($prefix.'.destroy', $replacement))->assertOk();
+    $this->postJson(route('trash.restore', $entry))->assertOk();
+
+    $this->assertDatabaseHas($feature, ['id' => $item->id, 'deleted_at' => null, 'archived_at' => '2026-09-01 12:00:00']);
+    $this->assertModelMissing($entry);
+    expect($user->{$feature}()->count())->toBe(1);
+})->with([
+    'projects' => ['projects', 'project', 'name'],
+    'areas' => ['areas', 'area', 'name'],
+    'resources' => ['resources', 'resource', 'title'],
+]);
+
+it('restores only the selected Core feature when other features are over quota', function (
+    string $feature, string $prefix,
+): void {
+    $this->seed(PlanSeeder::class);
+    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => [
+        'projects' => $feature === 'projects' ? 1 : 0,
+        'areas' => $feature === 'areas' ? 1 : 0,
+        'resources' => $feature === 'resources' ? 1 : 0,
+    ]]);
+    $user = User::factory()->create();
+    $area = $user->areas()->create(['name' => 'Related area']);
+    $project = $user->projects()->create(['name' => 'Related project']);
+    $project->area()->associate($area);
+    $project->saveOrFail();
+    $resource = $user->resources()->create(['title' => 'Related resource']);
+    $resource->areas()->attach($area);
+    $resource->projects()->attach($project);
+    $item = $user->{$feature}()->sole();
+    Passport::actingAs($user);
+    $this->deleteJson(route($prefix.'.destroy', $item))->assertOk();
+    $entry = TrashEntry::where('subject_uuid', $item->uuid)->sole();
+
+    $this->getJson(route('trash.index', ['type' => $prefix]))->assertOk()
+        ->assertJsonPath('data.data.0.can_restore', true)
+        ->assertJsonPath('data.data.0.restore_block_reason', null);
+    $this->postJson(route('trash.restore', $entry))->assertOk();
+
+    $this->assertNotSoftDeleted($item);
+    $this->assertModelMissing($entry);
+    expect($user->projects()->count())->toBe(1)
+        ->and($user->areas()->count())->toBe(1)
+        ->and($user->resources()->count())->toBe(1);
+    $this->assertDatabaseHas('projects', ['id' => $project->id, 'area_id' => $area->id]);
+    $this->assertDatabaseHas('area_resource', ['area_id' => $area->id, 'resource_id' => $resource->id]);
+    $this->assertDatabaseHas('project_resource', ['project_id' => $project->id, 'resource_id' => $resource->id]);
+})->with([
+    'projects' => ['projects', 'project'],
+    'areas and their unchanged Core children' => ['areas', 'area'],
+    'resources and their associations' => ['resources', 'resource'],
+]);
+
+it('keeps parent availability ahead of a Core recovery quota denial', function (): void {
+    $this->seed(PlanSeeder::class);
+    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 1, 'resources' => 0]]);
+    $user = User::factory()->create();
+    $area = $user->areas()->create(['name' => 'Parent area']);
+    $project = $user->projects()->create(['name' => 'Child project']);
+    $project->area()->associate($area);
+    $project->saveOrFail();
+    Passport::actingAs($user);
+    $this->deleteJson(route('project.destroy', $project))->assertOk();
+    $this->deleteJson(route('area.destroy', $area))->assertOk();
+    $entry = TrashEntry::where('subject_uuid', $project->uuid)->sole();
+
+    $this->getJson(route('trash.index', ['type' => 'project']))->assertOk()
+        ->assertJsonPath('data.data.0.can_restore', false)
+        ->assertJsonPath('data.data.0.restore_block_reason', 'Restore the parent item first before restoring this item.');
+    $this->postJson(route('trash.restore', $entry))->assertConflict()
+        ->assertJsonPath('message', 'Restore the parent item first before restoring this item.')
+        ->assertJsonMissingPath('code');
+
+    $this->assertSoftDeleted($project);
+    $this->assertSoftDeleted($area);
+    $this->assertModelExists($entry);
+});
+
+it('returns 410 and purges an expired Core entry before considering its quota', function (): void {
+    $this->travelTo('2026-10-05T08:00:00Z');
+    $this->seed(PlanSeeder::class);
+    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 0]]);
+    $user = User::factory()->create();
+    $resource = $user->resources()->create(['title' => 'Expired reference']);
+    Passport::actingAs($user);
+    $this->deleteJson(route('resource.destroy', $resource))->assertOk();
+    $entry = TrashEntry::where('subject_uuid', $resource->uuid)->sole();
+    $this->travel(30)->days();
+
+    $this->postJson(route('trash.restore', $entry))->assertGone()
+        ->assertJsonPath('message', 'This item has expired and was permanently deleted.')
+        ->assertJsonMissingPath('code');
+
+    $this->assertModelMissing($entry);
+    $this->assertDatabaseMissing('resources', ['id' => $resource->id]);
+    $this->getJson(route('trash.index', ['type' => 'resource']))->assertOk()->assertJsonPath('data.total', 0);
+});
+
+it('returns 404 for another owners Core recovery before evaluating quota', function (): void {
+    $this->seed(PlanSeeder::class);
+    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 0]]);
+    $owner = User::factory()->create();
+    $resource = $owner->resources()->create(['title' => 'Private reference']);
+    Passport::actingAs($owner);
+    $this->deleteJson(route('resource.destroy', $resource))->assertOk();
+    $entry = TrashEntry::where('subject_uuid', $resource->uuid)->sole();
+    Passport::actingAs(User::factory()->create());
+
+    $this->postJson(route('trash.restore', $entry))->assertNotFound()->assertJsonMissingPath('code');
+
+    $this->assertSoftDeleted($resource);
+    $this->assertModelExists($entry);
+    $this->getJson(route('trash.index'))->assertOk()->assertJsonPath('data.total', 0);
+});
+
+it('allows Core recovery with effective unlimited entitlements', function (
+    string $mode, string $feature, string $prefix,
+): void {
+    $this->seed(PlanSeeder::class);
+    $user = User::factory()->create();
+    if ($mode === 'disabled') {
+        config(['plans.enforcement_enabled' => false]);
+        Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 0]]);
+    } elseif ($mode === 'lifetime') {
+        $plan = Plan::where('slug', 'clarity')->sole();
+        $plan->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 0]]);
+        PlanAssignment::factory()->for($user)->for($plan)->lifetime()->create();
+    } else {
+        PlanAssignment::factory()->for($user)->for(Plan::where('slug', 'clarity')->sole())->create();
+    }
+    createQuotaItems($user, $feature, 1, [$feature === 'resources' ? 'title' : 'name' => 'Recovered item']);
+    $item = $user->{$feature}()->sole();
+    Passport::actingAs($user);
+    $this->deleteJson(route($prefix.'.destroy', $item))->assertOk();
+    createQuotaItems($user, $feature, 1);
+    $entry = TrashEntry::where('subject_uuid', $item->uuid)->sole();
+
+    $this->getJson(route('trash.index', ['type' => $prefix]))->assertOk()
+        ->assertJsonPath('data.data.0.can_restore', true)
+        ->assertJsonPath('data.data.0.restore_block_reason', null);
+    $this->postJson(route('trash.restore', $entry))->assertOk();
+
+    $this->assertNotSoftDeleted($item);
+    $this->assertModelMissing($entry);
+    expect($user->{$feature}()->count())->toBe(2);
+})->with([
+    'Clarity projects' => ['clarity', 'projects', 'project'],
+    'Clarity areas' => ['clarity', 'areas', 'area'],
+    'Clarity resources' => ['clarity', 'resources', 'resource'],
+    'lifetime projects' => ['lifetime', 'projects', 'project'],
+    'lifetime areas' => ['lifetime', 'areas', 'area'],
+    'lifetime resources' => ['lifetime', 'resources', 'resource'],
+    'disabled projects' => ['disabled', 'projects', 'project'],
+    'disabled areas' => ['disabled', 'areas', 'area'],
+    'disabled resources' => ['disabled', 'resources', 'resource'],
+]);
+
+it('restores grouped boards and notes without consuming Core quota', function (): void {
+    $this->seed(PlanSeeder::class);
+    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 0]]);
+    $user = User::factory()->create();
+    createQuotaItems($user, 'projects', 1);
+    createQuotaItems($user, 'areas', 1);
+    createQuotaItems($user, 'resources', 1);
+    $board = app(BoardService::class)->createStandalone($user);
+    app(BoardService::class)->createStandalone($user);
+    $task = app(BoardTaskService::class)->create($user, $board, ['title' => 'Saved task']);
+    $note = $user->standaloneNotes()->create(['title' => 'Root note', 'content' => '']);
+    $child = $user->standaloneNotes()->create(['title' => 'Child note', 'parent_id' => $note->id, 'content' => '']);
+    Passport::actingAs($user);
+    $this->deleteJson(route('board.destroy', $board))->assertOk();
+    $this->deleteJson(route('notes.destroy', $note))->assertOk();
+    $boardEntry = TrashEntry::where('subject_uuid', $board->uuid)->sole();
+    $noteEntry = TrashEntry::where('subject_uuid', $note->uuid)->sole();
+
+    $this->getJson(route('trash.index'))->assertOk()
+        ->assertJsonPath('data.total', 2)
+        ->assertJsonPath('data.data.0.can_restore', true)
+        ->assertJsonPath('data.data.0.group_size', 2)
+        ->assertJsonPath('data.data.1.can_restore', true)
+        ->assertJsonPath('data.data.1.group_size', 2);
+    $this->postJson(route('trash.restore', $boardEntry))->assertOk();
+    $this->postJson(route('trash.restore', $noteEntry))->assertOk();
+
+    $this->assertNotSoftDeleted($board);
+    $this->assertNotSoftDeleted($task);
+    $this->assertNotSoftDeleted($note);
+    $this->assertNotSoftDeleted($child);
+    $this->assertDatabaseEmpty('trash_entries');
+    expect($user->projects()->count())->toBe(1)
+        ->and($user->areas()->count())->toBe(1)
+        ->and($user->resources()->count())->toBe(1);
+});
+
+it('restores attachment files while the parent resource is over quota', function (): void {
+    Storage::fake('local');
+    $this->seed(PlanSeeder::class);
+    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 0]]);
+    $user = User::factory()->create();
+    $resource = $user->resources()->create(['title' => 'Existing reference']);
+    Storage::disk('local')->put('resources/recoverable.txt', 'Retained attachment');
+    $attachment = $resource->attachments()->create([
+        'kind' => 'file', 'path' => 'resources/recoverable.txt', 'original_name' => 'recoverable.txt',
+    ]);
+    Passport::actingAs($user);
+    $this->deleteJson(route('resource.attachments.destroy', [$resource, $attachment->uuid]))->assertOk();
+    $entry = TrashEntry::where('subject_uuid', $attachment->uuid)->sole();
+
+    $this->getJson(route('trash.index', ['type' => 'resource_attachment']))->assertOk()
+        ->assertJsonPath('data.data.0.can_restore', true)
+        ->assertJsonPath('data.data.0.restore_block_reason', null);
+    $this->postJson(route('trash.restore', $entry))->assertOk();
+
+    $this->assertNotSoftDeleted($attachment);
+    $this->assertModelMissing($entry);
+    Storage::disk('local')->assertExists('resources/recoverable.txt');
+    expect($user->resources()->count())->toBe(1);
+});
 
 it('keeps existing records readable editable and recoverable after downgrade', function (): void {
     $this->seed(PlanSeeder::class);

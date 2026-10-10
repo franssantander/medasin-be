@@ -2,6 +2,7 @@
 
 namespace App\Services\Trash;
 
+use App\Enum\CoreFeature;
 use App\Models\Area;
 use App\Models\Board;
 use App\Models\BoardLabel;
@@ -19,6 +20,7 @@ use App\Models\Resource;
 use App\Models\ResourceAttachment;
 use App\Models\TrashEntry;
 use App\Models\User;
+use App\Services\Plan\PlanQuotaService;
 use App\Services\Profile\FileCleanupService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
@@ -29,7 +31,10 @@ class TrashService
 {
     public const TYPES = ['area', 'project', 'resource', 'board', 'task', 'goal', 'habit', 'note', 'journal_entry', 'letter', 'board_label', 'resource_attachment', 'calendar_plan'];
 
-    public function __construct(private readonly FileCleanupService $fileCleanup) {}
+    public function __construct(
+        private readonly FileCleanupService $fileCleanup,
+        private readonly PlanQuotaService $quota,
+    ) {}
 
     public function delete(User $user, Model $subject, string $itemType, string $title, ?string $context = null): TrashEntry
     {
@@ -119,12 +124,17 @@ class TrashService
     public function restore(TrashEntry $entry): void
     {
         DB::transaction(function () use ($entry): void {
-            if (in_array($entry->subject_type, [Area::class, Project::class, Resource::class], true)) {
-                User::query()->lockForUpdate()->findOrFail($entry->user_id);
+            $feature = $this->coreFeature($entry->subject_type);
+            if ($feature !== null) {
+                $user = User::query()->lockForUpdate()->findOrFail($entry->user_id);
             }
             $entry = TrashEntry::query()->lockForUpdate()->findOrFail($entry->getKey());
             $subject = $this->subject($entry);
             $this->ensureParentAvailable($entry, $subject);
+
+            if ($feature !== null) {
+                $this->quota->assertCanIncrease($user, $feature);
+            }
 
             if ($subject instanceof Board) {
                 $subject->restore();
@@ -191,15 +201,45 @@ class TrashService
         });
     }
 
-    public function serialize(TrashEntry $entry): array
+    /**
+     * @param  iterable<TrashEntry>  $entries
+     * @return array<string, string>
+     */
+    public function restoreBlockReasons(User $user, iterable $entries): array
     {
+        $features = [];
+        foreach ($entries as $entry) {
+            $feature = $this->coreFeature($entry->subject_type);
+            if ($feature !== null) {
+                $features[$feature->value] = $feature;
+            }
+        }
+
+        $reasons = [];
+        foreach ($this->quota->increaseViolations($user, array_values($features)) as $feature => $violation) {
+            $reasons[$feature] = $violation->getMessage();
+        }
+
+        return $reasons;
+    }
+
+    /** @param array<string, string> $restoreBlockReasons */
+    public function serialize(TrashEntry $entry, array $restoreBlockReasons): array
+    {
+        $subject = $this->subject($entry);
         $canRestore = true;
         $reason = null;
         try {
-            $this->ensureParentAvailable($entry, $this->subject($entry));
+            $this->ensureParentAvailable($entry, $subject);
         } catch (ConflictHttpException $exception) {
             $canRestore = false;
             $reason = $exception->getMessage();
+        }
+
+        $feature = $this->coreFeature($subject::class);
+        if ($canRestore && $feature !== null && isset($restoreBlockReasons[$feature->value])) {
+            $canRestore = false;
+            $reason = $restoreBlockReasons[$feature->value];
         }
 
         $groupSize = 1 + count($entry->metadata['task_ids'] ?? []) + max(0, count($entry->metadata['note_ids'] ?? []) - 1);
@@ -242,6 +282,17 @@ class TrashService
         abort_unless(in_array($class, $allowed, true), 404);
 
         return $class::withTrashed()->findOrFail($entry->subject_id);
+    }
+
+    /** @param class-string<Model> $subjectType */
+    private function coreFeature(string $subjectType): ?CoreFeature
+    {
+        return match ($subjectType) {
+            Area::class => CoreFeature::AREAS,
+            Project::class => CoreFeature::PROJECTS,
+            Resource::class => CoreFeature::RESOURCES,
+            default => null,
+        };
     }
 
     private function ensureParentAvailable(TrashEntry $entry, Model $subject): void

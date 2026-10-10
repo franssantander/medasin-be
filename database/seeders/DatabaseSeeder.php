@@ -14,7 +14,6 @@ class DatabaseSeeder extends Seeder
         $this->call([
             PassportClientSeeder::class,
             DemoUserSeeder::class,
-            PlanSeeder::class,
         ]);
     }
 }

@@ -43,7 +43,7 @@ class AreaSeederTest extends TestCase
             $this->assertSame($icon, $area->icon);
             $this->assertSame('#000000', $area->background);
             $this->assertNull($area->archived_at);
-            $this->assertSame("areas/backgrounds/seed/{$slug}.png", $area->background_image);
+            $this->assertSame("areas/backgrounds/seed/{$user->uuid}/{$slug}.png", $area->background_image);
             Storage::disk('public')->assertExists($area->background_image);
         }
     }
@@ -51,8 +51,9 @@ class AreaSeederTest extends TestCase
     public function test_database_seeder_creates_habits_with_icons_and_normalized_schedules(): void
     {
         Storage::fake('public');
+        Storage::fake('local');
         $this->seed(DatabaseSeeder::class);
-        $user = User::where('email', 'test@example.com')->firstOrFail();
+        $user = User::where('email', 'focus@example.com')->firstOrFail();
         $habits = $user->areas()->with('habits')->get()->flatMap->habits->keyBy('name');
 
         $this->assertSame('Footprints', $habits['Morning walk']->icon);

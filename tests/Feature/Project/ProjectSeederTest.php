@@ -17,11 +17,13 @@ class ProjectSeederTest extends TestCase
     public function test_it_seeds_projects_with_default_badge_backgrounds_and_kanban_boards(): void
     {
         Storage::fake('public');
+        Storage::fake('local');
         $this->seed(DemoUserSeeder::class);
 
-        $projects = User::where('email', 'test@example.com')
+        $projects = User::where('email', 'focus@example.com')
             ->firstOrFail()
             ->projects()
+            ->whereNull('archived_at')
             ->with(['boards.stages', 'boards.tasks.stage'])
             ->orderBy('name')
             ->get();
@@ -86,7 +88,7 @@ class ProjectSeederTest extends TestCase
                 ->boards->first()->tasks->firstWhere('stage.key.value', 'in_progress')?->title,
         );
 
-        $user = User::where('email', 'test@example.com')->firstOrFail();
+        $user = User::where('email', 'focus@example.com')->firstOrFail();
         Passport::actingAs($user);
         $projectCards = collect($this->getJson(route('project.index'))->assertOk()->json('data'))
             ->keyBy('name');

@@ -2,22 +2,49 @@
 
 namespace Database\Seeders;
 
+use App\Data\Area\AreaData;
+use App\Data\Journal\JournalEntryData;
+use App\Data\Letter\LetterData;
+use App\Data\Note\NoteData;
+use App\Data\Project\ProjectData;
+use App\Data\Resource\StoreResourceData;
+use App\Enum\BoardLabelColor;
 use App\Enum\BoardStageKey;
 use App\Enum\BoardTaskPriority;
+use App\Enum\FocusMood;
+use App\Enum\FocusSessionStatus;
+use App\Enum\FocusSessionType;
 use App\Enum\GoalStatus;
 use App\Enum\HabitFrequency;
+use App\Enum\PlanGrantType;
 use App\Models\Area;
+use App\Models\Plan;
 use App\Models\Project;
 use App\Models\Resource;
 use App\Models\User;
+use App\Services\ApiReadCacheService;
+use App\Services\Area\AreaService;
 use App\Services\Board\BoardService;
 use App\Services\Board\BoardTaskService;
+use App\Services\Calendar\CalendarPlanService;
+use App\Services\Focus\FocusService;
+use App\Services\Habit\HabitService;
+use App\Services\Journal\JournalService;
+use App\Services\Letter\LetterService;
+use App\Services\Note\NoteService;
+use App\Services\Plan\PlanAssignmentService;
+use App\Services\Project\ProjectService;
+use App\Services\Resource\ResourceService;
+use App\Services\Trash\TrashService;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Seeder;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
 class DemoUserSeeder extends Seeder
 {
-    private const DEMO_USER_EMAIL = 'test@example.com';
+    private const TIMEZONE = 'Asia/Manila';
 
     private const PROJECT_BADGE_BACKGROUND = '#000000';
 
@@ -26,22 +53,45 @@ class DemoUserSeeder extends Seeder
      */
     public function run(): void
     {
-        if (User::query()->where('email', self::DEMO_USER_EMAIL)->exists()) {
-            return;
-        }
+        $this->call(PlanSeeder::class);
 
         DB::transaction(function (): void {
-            User::factory(10)->create();
+            foreach (['free', 'focus', 'clarity'] as $slug) {
+                $email = $slug.'@example.com';
+                if (User::query()->where('email', $email)->exists()) {
+                    continue;
+                }
 
-            $testUser = User::factory()->create([
-                'first_name' => 'John',
-                'last_name' => 'Doe',
-                'username' => 'testuser',
-                'email' => self::DEMO_USER_EMAIL,
-            ]);
+                $user = User::factory()->create([
+                    'first_name' => ucfirst($slug),
+                    'last_name' => 'Demo',
+                    'username' => $slug.'user',
+                    'email' => $email,
+                    'email_verified_at' => now(),
+                    'password' => 'password',
+                ]);
+                $grantType = match ($slug) {
+                    'free' => PlanGrantType::FREE,
+                    'focus' => PlanGrantType::RECURRING,
+                    'clarity' => PlanGrantType::LIFETIME,
+                };
+                app(PlanAssignmentService::class)->assign(
+                    $user,
+                    Plan::query()->where('slug', $slug)->sole(),
+                    $grantType,
+                    $slug === 'focus' ? CarbonImmutable::now('UTC')->addYear() : null,
+                    $slug.'-demo',
+                    'demo',
+                );
 
-            $this->callWith(AreaSeeder::class, ['user' => $testUser]);
-            $this->seedAreaInterconnections($testUser);
+                if ($slug !== 'free') {
+                    $this->callWith(AreaSeeder::class, ['user' => $user]);
+                    $this->seedAreaInterconnections($user);
+                    $this->seedUtilities($user);
+                    $this->seedArchivesAndTrash($user);
+                    app(ApiReadCacheService::class)->invalidateUser($user);
+                }
+            }
         });
     }
 
@@ -298,49 +348,216 @@ class DemoUserSeeder extends Seeder
         ]);
 
         $runningGuide = $this->resource($user, 'Beginner 10K Training Guide', [
-            'type' => 'article',
-            'description' => 'A reference for structuring weekly running volume.',
-            'url' => 'https://example.com/resources/10k-training-guide',
-            'author' => 'Medasin Demo',
-            'source' => 'Example Resources',
-            'icon' => 'book-open',
+            'content' => $this->resourceDocument('Increase weekly running volume gradually and include recovery days.'),
+            'links' => ['https://example.com/resources/10k-training-guide'],
+            'tag_names' => ['Training'],
+            'area_uuids' => [$health->uuid],
+            'project_uuids' => [$fitnessProject->uuid],
+            'icon' => 'BookOpen',
             'background' => '#DCFCE7',
-            'is_favorite' => true,
         ]);
 
-        $careerBook = $this->resource($user, 'Building a Meaningful Career', [
-            'type' => 'book',
-            'description' => 'Notes and exercises for intentional career planning.',
-            'author' => 'Alex Rivera',
-            'source' => 'Personal Library',
-            'icon' => 'book-marked',
+        $this->resourceWithTextAttachment($user, 'Building a Meaningful Career', [
+            'content' => $this->resourceDocument('Choose meaningful work, document progress, and invest in useful skills.'),
+            'tag_names' => ['Career', 'Learning'],
+            'area_uuids' => [$career->uuid, $personalDevelopment->uuid],
+            'project_uuids' => [$portfolioProject->uuid, $readingProject->uuid],
+            'icon' => 'BookMarked',
             'background' => '#DBEAFE',
-            'is_favorite' => true,
-        ]);
+        ], 'career-notes.txt', 'List recent achievements, useful skills, and the next meaningful career step.');
 
-        $reflectionTemplate = $this->resource($user, 'Monthly Reflection Template', [
-            'type' => 'template',
-            'description' => 'A compact prompt set for reviewing the previous month.',
-            'url' => 'https://example.com/resources/monthly-reflection',
-            'source' => 'Example Resources',
-            'icon' => 'notebook-pen',
+        $this->resource($user, 'Monthly Reflection Template', [
+            'content' => $this->resourceDocument('What went well? What did you learn? What will you change next month?'),
+            'files' => [new UploadedFile(
+                database_path('seeders/assets/areas/personal-development.png'),
+                'reflection-template.png',
+                'image/png',
+                null,
+                true,
+            )],
+            'tag_names' => ['Reflection', 'Learning'],
+            'area_uuids' => [$personalDevelopment->uuid],
+            'project_uuids' => [$readingProject->uuid],
+            'icon' => 'NotebookPen',
             'background' => '#F3E8FF',
-            'is_favorite' => false,
         ]);
 
-        $health->resources()->syncWithoutDetaching([$runningGuide->getKey()]);
-        $career->resources()->syncWithoutDetaching([$careerBook->getKey()]);
-        $personalDevelopment->resources()->syncWithoutDetaching([
-            $careerBook->getKey(),
-            $reflectionTemplate->getKey(),
-        ]);
+        app(BoardTaskService::class)->update(
+            $user,
+            $fitnessProject->boards()->firstOrFail(),
+            $fitnessProject->boards()->firstOrFail()->tasks()->where('title', 'Plan weekly running sessions')->sole(),
+            ['resource_uuids' => [$runningGuide->uuid], 'note_uuids' => [$health->notes()->where('title', 'Health priorities')->sole()->uuid]],
+        );
+    }
 
-        $fitnessProject->resources()->syncWithoutDetaching([$runningGuide->getKey()]);
-        $portfolioProject->resources()->syncWithoutDetaching([$careerBook->getKey()]);
-        $readingProject->resources()->syncWithoutDetaching([
-            $careerBook->getKey(),
-            $reflectionTemplate->getKey(),
+    private function seedUtilities(User $user): void
+    {
+        $notes = app(NoteService::class);
+        $root = $notes->create($user->standaloneNotes(), NoteData::from([
+            'title' => 'Weekly planning',
+            'content' => 'Choose three priorities and leave time for recovery.',
+            'is_pinned' => true,
+            'parent_uuid' => null,
+        ]));
+        $notes->create($user->standaloneNotes(), NoteData::from([
+            'title' => 'Review checklist',
+            'content' => 'Review projects, update next steps, and celebrate progress.',
+            'parent_uuid' => $root->uuid,
+        ]));
+        $notes->create($user->standaloneNotes(), NoteData::from([
+            'title' => 'Ideas to revisit',
+            'content' => 'Keep promising ideas here until there is room to explore them.',
+            'parent_uuid' => null,
+        ]));
+
+        $board = app(BoardService::class)->createStandalone($user, 'Personal Board');
+        $personal = $board->labels()->create(['name' => 'Personal', 'color' => BoardLabelColor::BLUE]);
+        $learning = $board->labels()->create(['name' => 'Learning', 'color' => BoardLabelColor::VIOLET]);
+        $guide = $user->resources()->where('title', 'Beginner 10K Training Guide')->sole();
+        $tasks = [
+            $this->boardTask('Explore a weekend activity', 'Collect a few options for a refreshing weekend.', BoardStageKey::BACKLOG, BoardTaskPriority::LOW),
+            $this->boardTask('Plan the coming week', 'Choose priorities using the weekly planning note.', BoardStageKey::TODOS, BoardTaskPriority::HIGH),
+            $this->boardTask('Read a useful reference', 'Capture one practical idea from the training guide.', BoardStageKey::IN_PROGRESS, BoardTaskPriority::MEDIUM),
+            $this->boardTask('Organize the workspace', 'Clear distractions and keep useful tools nearby.', BoardStageKey::DONE, BoardTaskPriority::LOW),
+        ];
+        foreach ($tasks as $index => $task) {
+            app(BoardTaskService::class)->create($user, $board, [
+                ...$task,
+                'label_uuids' => [$index === 2 ? $learning->uuid : $personal->uuid],
+                'resource_uuids' => $index === 2 ? [$guide->uuid] : [],
+                'note_uuids' => $index === 1 ? [$root->uuid] : [],
+            ]);
+        }
+
+        $today = CarbonImmutable::today(self::TIMEZONE);
+        foreach (['Morning walk', 'Read for thirty minutes'] as $index => $name) {
+            $habit = $user->habits()->where('name', $name)->sole();
+            for ($daysAgo = 6; $daysAgo >= 0; $daysAgo--) {
+                app(HabitService::class)->checkIn($user, $habit, $today->subDays($daysAgo)->toDateString(), [
+                    'completed' => ! ($index === 1 && $daysAgo === 1),
+                    'timezone' => self::TIMEZONE,
+                ]);
+            }
+        }
+
+        $this->seedFocusAndJournals($user);
+
+        foreach ([
+            ['title' => 'A letter to my future self', 'subtitle' => 'Keep making room for what matters.', 'text' => 'Remember the habits and people that make life meaningful. Keep taking small, deliberate steps.'],
+            ['title' => 'A note of appreciation', 'subtitle' => null, 'text' => 'Thank you for the thoughtful work and steady support. Your kindness has made a lasting difference.'],
+        ] as $letter) {
+            app(LetterService::class)->create($user, LetterData::from([
+                'title' => $letter['title'],
+                'subtitle' => $letter['subtitle'],
+                'content' => $this->blockNoteDocument($letter['text']),
+            ]));
+        }
+
+        $career = $user->areas()->where('slug', 'career')->sole();
+        $portfolio = $user->projects()->where('slug', 'portfolio-refresh')->sole();
+        foreach ([
+            ['title' => 'Daily priorities', 'date' => $today->toDateString(), 'is_all_day' => true],
+            ['title' => 'Portfolio review', 'date' => $today->addDay()->toDateString(), 'is_all_day' => false, 'time' => '10:00', 'area_uuid' => $career->uuid, 'project_uuid' => $portfolio->uuid],
+            ['title' => 'Review the coming week', 'date' => $today->addWeek()->toDateString(), 'is_all_day' => true, 'area_uuid' => $career->uuid],
+        ] as $event) {
+            app(CalendarPlanService::class)->create($user, [
+                ...$event,
+                'timezone' => self::TIMEZONE,
+                'notes' => 'A little preparation creates space for focused work and a calmer week.',
+                'reminder_offset_minutes' => null,
+            ]);
+        }
+    }
+
+    private function seedFocusAndJournals(User $user): void
+    {
+        $focus = app(FocusService::class);
+        $focus->settings($user);
+        $project = $user->projects()->where('slug', '10k-training-plan')->sole();
+        $boardTask = $project->boards()->firstOrFail()->tasks()->where('title', 'Complete the current training week')->sole();
+        $linked = $focus->createTask($user, ['board_task_uuid' => $boardTask->uuid]);
+        $focus->createTask($user, ['title' => 'Draft weekly reflection']);
+        $completed = $focus->createTask($user, ['title' => 'Organize reference notes']);
+        $focus->updateTask($user, $completed, ['completed' => true]);
+
+        $now = CarbonImmutable::now('UTC');
+        $sessions = [];
+        foreach ([$now->setTimezone(self::TIMEZONE)->subDay()->setTime(16, 0)->utc(), $now] as $index => $completedAt) {
+            $task = $index === 0 ? $completed : $linked;
+            $session = $user->focusSessions()->make([
+                'task_title' => $task->title,
+                'type' => FocusSessionType::FOCUS,
+                'status' => FocusSessionStatus::COMPLETED,
+                'duration_seconds' => 1500,
+                'remaining_seconds' => 0,
+                'started_at' => $completedAt->subMinutes(25),
+                'completed_at' => $completedAt,
+            ]);
+            $session->focusTask()->associate($task);
+            $session->saveOrFail();
+            $sessions[] = $session;
+        }
+        $focus->reflect($user, $sessions[1], ['mood' => FocusMood::CALM->value, 'note' => 'A clear next step made this session productive.']);
+
+        foreach ([
+            ['title' => 'Weekly reflection', 'text' => 'Consistent routines helped me make progress while leaving room for rest.', 'resource' => 'Monthly Reflection Template'],
+            ['title' => 'Ideas for the next release', 'text' => 'Start with the customer problem, choose a small experiment, and review what the results teach us.', 'resource' => 'Building a Meaningful Career'],
+        ] as $entry) {
+            app(JournalService::class)->create($user, JournalEntryData::from([
+                'title' => $entry['title'],
+                'content' => $this->blockNoteDocument($entry['text']),
+                'resource_uuids' => [$user->resources()->where('title', $entry['resource'])->sole()->uuid],
+            ]));
+        }
+    }
+
+    private function seedArchivesAndTrash(User $user): void
+    {
+        $areas = app(AreaService::class);
+        $trash = app(TrashService::class);
+        $archivedArea = $areas->create($user, AreaData::from([
+            'name' => 'Archived Area', 'icon' => 'Archive', 'background' => '#000000',
+            'description' => 'An earlier focus area kept for reference.',
+        ]));
+        $areas->archive($archivedArea);
+        $trashedArea = $areas->create($user, AreaData::from([
+            'name' => 'Trashed Area', 'icon' => 'Archive', 'background' => '#000000',
+            'description' => 'A sample area that can be recovered from Trash.',
+        ]));
+        $trash->delete($user, $trashedArea, 'area', $trashedArea->name);
+
+        $attributes = ['icon' => 'Archive', 'background' => self::PROJECT_BADGE_BACKGROUND, 'status' => 'active'];
+        $archivedProject = $this->project($user, 'Archived Project', null, $attributes);
+        $archivedProject->forceFill(['archived_at' => now()])->saveOrFail();
+        $trashedProject = $this->project($user, 'Trashed Project', null, $attributes);
+        $trash->delete($user, $trashedProject, 'project', $trashedProject->name);
+
+        $archivedResource = $this->resource($user, 'Archived Resource', [
+            'content' => $this->resourceDocument('A useful reference retained after its project finished.'),
+            'tag_names' => ['Reference'],
         ]);
+        app(ResourceService::class)->archive($archivedResource);
+        $trashedResource = $this->resourceWithTextAttachment($user, 'Trashed Resource', [
+            'content' => $this->resourceDocument('Restore this resource to recover its saved attachment.'),
+            'tag_names' => ['Reference'],
+        ], 'recoverable-reference.txt', 'This saved reference remains available throughout the Trash recovery period.');
+        $trash->delete($user, $trashedResource, 'resource', $trashedResource->title);
+    }
+
+    private function blockNoteDocument(string $text): string
+    {
+        return json_encode(['version' => 1, 'blocks' => [['type' => 'paragraph', 'content' => $text]]], JSON_THROW_ON_ERROR);
+    }
+
+    /** @return array{type: string, content: list<array{type: string, content: list<array{type: string, text: string}>}>} */
+    private function resourceDocument(string $text): array
+    {
+        return [
+            'type' => 'doc',
+            'content' => [
+                ['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => $text]]],
+            ],
+        ];
     }
 
     /**
@@ -387,16 +604,9 @@ class DemoUserSeeder extends Seeder
      */
     private function project(User $user, string $name, ?Area $area, array $attributes): Project
     {
-        $project = $user->projects()->updateOrCreate(
-            ['slug' => str($name)->slug()->toString()],
-            ['name' => $name, 'area_id' => $area?->getKey(), ...$attributes],
-        );
-
-        if (! $project->boards()->exists()) {
-            app(BoardService::class)->createForProject($user, $project);
-        }
-
-        return $project;
+        return app(ProjectService::class)->create($user, ProjectData::from([
+            'name' => $name, 'area_uuid' => $area?->uuid, ...$attributes,
+        ]));
     }
 
     /**
@@ -440,9 +650,30 @@ class DemoUserSeeder extends Seeder
      */
     private function resource(User $user, string $title, array $attributes): Resource
     {
-        return $user->resources()->updateOrCreate(
-            ['title' => $title],
-            $attributes,
-        );
+        $resource = app(ResourceService::class)->create($user, StoreResourceData::from(['title' => $title, ...$attributes]));
+
+        return $user->resources()->where('uuid', $resource['uuid'])->sole();
+    }
+
+    /** @param array<string, mixed> $attributes */
+    private function resourceWithTextAttachment(User $user, string $title, array $attributes, string $filename, string $content): Resource
+    {
+        $path = tempnam(sys_get_temp_dir(), 'medasin-demo-');
+        if ($path === false) {
+            throw new RuntimeException('Unable to create a temporary demo attachment.');
+        }
+
+        try {
+            if (file_put_contents($path, $content) === false) {
+                throw new RuntimeException('Unable to write a temporary demo attachment.');
+            }
+
+            return $this->resource($user, $title, [
+                ...$attributes,
+                'files' => [new UploadedFile($path, $filename, 'text/plain', null, true)],
+            ]);
+        } finally {
+            unlink($path);
+        }
     }
 }

@@ -32,7 +32,8 @@ class TrashController extends Controller
         }
 
         $page = $query->latest('deleted_at')->paginate($validated['per_page'] ?? 15);
-        $page->through(fn (TrashEntry $entry) => $this->trashService->serialize($entry));
+        $restoreBlockReasons = $this->trashService->restoreBlockReasons($request->user(), $page->getCollection());
+        $page->through(fn (TrashEntry $entry) => $this->trashService->serialize($entry, $restoreBlockReasons));
 
         return $this->success($page);
     }

@@ -10,8 +10,9 @@ pest()->use(RefreshDatabase::class)->group('pest-features');
 
 it('exposes seeded workspace content only to its owner while sharing the plan catalog', function (): void {
     Storage::fake('public');
+    Storage::fake('local');
     $this->seed(DatabaseSeeder::class);
-    $demo = User::where('email', 'test@example.com')->sole();
+    $demo = User::where('email', 'focus@example.com')->sole();
     Passport::actingAs($demo);
 
     $this->getJson(route('area.index'))->assertOk()->assertJsonCount(7, 'data');
