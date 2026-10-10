@@ -3,11 +3,8 @@
 use App\Http\Controllers\Resource\ResourceController;
 use Illuminate\Support\Facades\Route;
 
-Route::get('resource', [ResourceController::class, 'index'])
-    ->middleware('auth:api')
-    ->name('resource.index');
-
-Route::middleware('auth:api')->group(function () {
+Route::middleware(['auth:api', 'throttle:resources'])->withoutMiddleware('throttle:api')->group(function (): void {
+    Route::get('resource', [ResourceController::class, 'index'])->name('resource.index');
     Route::post('resource', [ResourceController::class, 'store'])->name('resource.store');
     Route::get('resource/tags', [ResourceController::class, 'tags'])->name('resource.tags');
     Route::get('resource/{resource:uuid}', [ResourceController::class, 'show'])->name('resource.show');
