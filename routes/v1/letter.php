@@ -4,7 +4,7 @@ use App\Http\Controllers\Letter\LetterController;
 use App\Http\Controllers\Letter\LetterExportController;
 use Illuminate\Support\Facades\Route;
 
-Route::prefix('letters')->name('letters.')->middleware('auth:api')->group(function () {
+Route::prefix('letters')->name('letters.')->middleware(['auth:api', 'throttle:letters'])->withoutMiddleware('throttle:api')->group(function () {
     Route::get('/', [LetterController::class, 'index'])->name('index');
     Route::post('/', [LetterController::class, 'store'])->name('store');
     Route::post('/{letter}/media', [LetterController::class, 'storeMedia'])->name('media.store');
@@ -15,7 +15,8 @@ Route::prefix('letters')->name('letters.')->middleware('auth:api')->group(functi
 
 Route::prefix('letters/{letter}/exports')
     ->name('letters.exports.')
-    ->middleware('auth:api')
+    ->middleware(['auth:api', 'throttle:letters'])
+    ->withoutMiddleware('throttle:api')
     ->scopeBindings()
     ->group(function () {
         Route::get('/', [LetterExportController::class, 'index'])->name('index');

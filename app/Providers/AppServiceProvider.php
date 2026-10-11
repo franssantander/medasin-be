@@ -69,6 +69,16 @@ class AppServiceProvider extends ServiceProvider
             );
         });
 
+        foreach (['boards', 'focus', 'calendar', 'journals', 'letters', 'notes', 'project-reads'] as $limiterName) {
+            RateLimiter::for($limiterName, function (Request $request): Limit {
+                $user = $request->user('api');
+
+                return Limit::perMinute(300)->by(
+                    $user ? 'user:'.$user->getAuthIdentifier() : 'ip:'.$request->ip(),
+                );
+            });
+        }
+
         Passport::tokensExpireIn(CarbonInterval::days(15));
         Passport::refreshTokensExpireIn(CarbonInterval::days(30));
         Passport::personalAccessTokensExpireIn(CarbonInterval::months(6));

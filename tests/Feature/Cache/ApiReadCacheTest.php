@@ -485,14 +485,26 @@ class ApiReadCacheTest extends TestCase
         );
     }
 
-    public function test_cached_hits_still_count_towards_api_rate_limits(): void
+    public function test_cached_project_reads_still_count_towards_their_request_allowance(): void
     {
+        $this->freezeTime();
         Passport::actingAs(User::factory()->create());
-        for ($request = 0; $request < 30; $request++) {
+        $this->getJson(route('project.index'))->assertOk()
+            ->assertHeader('X-RateLimit-Limit', '300')
+            ->assertHeader('X-RateLimit-Remaining', '299');
+        DB::enableQueryLog();
+        for ($request = 2; $request <= 300; $request++) {
             $this->getJson(route('project.index'))->assertOk();
         }
 
-        $this->getJson(route('project.index'))->assertTooManyRequests();
+        $this->assertSame([], $this->domainQueries());
+        $this->getJson(route('project.index'))->assertTooManyRequests()
+            ->assertHeader('X-RateLimit-Limit', '300')
+            ->assertHeader('X-RateLimit-Remaining', '0')
+            ->assertHeader('Retry-After', '60');
+        $this->getJson(route('auth.me'))->assertOk()
+            ->assertHeader('X-RateLimit-Limit', '30')
+            ->assertHeader('X-RateLimit-Remaining', '29');
     }
 
     public function test_standalone_board_initialization_still_runs_after_a_cached_read(): void

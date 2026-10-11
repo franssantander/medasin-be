@@ -11,9 +11,11 @@ Route::prefix('project')
     ->middleware('auth:api')
     ->controller(ProjectController::class)
     ->group(function () {
-        Route::get('/', 'index')->name('index');
+        Route::get('/', 'index')->name('index')
+            ->middleware('throttle:project-reads')->withoutMiddleware('throttle:api');
         Route::post('/', 'store')->name('store');
-        Route::get('/{project}', 'show')->name('show');
+        Route::get('/{project}', 'show')->name('show')
+            ->middleware('throttle:project-reads')->withoutMiddleware('throttle:api');
         Route::put('/{project}', 'update')->name('update');
         Route::patch('/{project}/area', 'updateArea')->name('area.update');
         Route::post('/{project}/resources', 'attachResources')->name('resources.store');
@@ -25,7 +27,8 @@ Route::prefix('project')
 
 Route::prefix('project/{project}/boards')
     ->name('project.boards.')
-    ->middleware('auth:api')
+    ->middleware(['auth:api', 'throttle:boards'])
+    ->withoutMiddleware('throttle:api')
     ->group(function () {
         Route::get('/', [ProjectBoardController::class, 'index'])->name('index');
         Route::post('/', [ProjectBoardController::class, 'store'])->name('store');

@@ -5,7 +5,7 @@ use App\Http\Controllers\Focus\FocusSessionController;
 use App\Http\Controllers\Focus\FocusTaskController;
 use Illuminate\Support\Facades\Route;
 
-Route::prefix('focus')->name('focus.')->middleware('auth:api')->group(function () {
+Route::prefix('focus')->name('focus.')->middleware(['auth:api', 'throttle:focus'])->withoutMiddleware('throttle:api')->group(function () {
     Route::get('/', [FocusController::class, 'show'])->name('show');
     Route::get('/linkable-tasks', [FocusController::class, 'linkableTasks'])->name('linkable-tasks');
     Route::put('/settings', [FocusController::class, 'updateSettings'])->name('settings.update');

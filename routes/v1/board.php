@@ -5,7 +5,7 @@ use App\Http\Controllers\Board\StandaloneBoardLabelController;
 use App\Http\Controllers\Board\StandaloneBoardTaskController;
 use Illuminate\Support\Facades\Route;
 
-Route::prefix('board')->name('board.')->middleware('auth:api')->group(function () {
+Route::prefix('board')->name('board.')->middleware(['auth:api', 'throttle:boards'])->withoutMiddleware('throttle:api')->group(function () {
     Route::get('/', [StandaloneBoardController::class, 'index'])->name('index');
     Route::post('/', [StandaloneBoardController::class, 'store'])->name('store');
     Route::get('/{board}', [StandaloneBoardController::class, 'show'])->name('show');

@@ -274,4 +274,61 @@ class ApiRateLimitTest extends TestCase
 
         $this->getJson(route('resource.tags'))->assertOk()->assertHeader('X-RateLimit-Remaining', '119');
     }
+
+    public function test_project_reads_share_their_allowance_across_index_details_records_and_ip_addresses(): void
+    {
+        $this->freezeTime();
+        $first = User::factory()->create();
+        $second = User::factory()->create();
+        $projects = [
+            $first->projects()->create(['name' => 'First project']),
+            $first->projects()->create(['name' => 'Second project']),
+        ];
+        $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.1']);
+        Passport::actingAs($first);
+
+        $this->getJson(route('project.index'))->assertOk()
+            ->assertHeader('X-RateLimit-Limit', '300')
+            ->assertHeader('X-RateLimit-Remaining', '299');
+        $this->getJson(route('project.show', $projects[0]))->assertOk()
+            ->assertHeader('X-RateLimit-Limit', '300')
+            ->assertHeader('X-RateLimit-Remaining', '298');
+        $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.2']);
+        $this->json('HEAD', route('project.show', $projects[1]))->assertOk()
+            ->assertHeader('X-RateLimit-Limit', '300')
+            ->assertHeader('X-RateLimit-Remaining', '297');
+
+        Passport::actingAs($second);
+
+        $this->getJson(route('project.index'))->assertOk()
+            ->assertHeader('X-RateLimit-Limit', '300')
+            ->assertHeader('X-RateLimit-Remaining', '299');
+    }
+
+    public function test_project_reads_remain_available_when_general_requests_and_project_mutations_exhaust_their_allowance(): void
+    {
+        $this->freezeTime();
+        $user = User::factory()->create();
+        $project = $user->projects()->create(['name' => 'Original project']);
+        Passport::actingAs($user);
+        for ($request = 1; $request < 30; $request++) {
+            $this->getJson(route('auth.me'))->assertOk();
+        }
+        $this->putJson(route('project.update', $project), ['name' => 'Saved project'])->assertOk()
+            ->assertHeader('X-RateLimit-Limit', '30')
+            ->assertHeader('X-RateLimit-Remaining', '0');
+
+        $this->getJson(route('auth.me'))->assertTooManyRequests();
+        $this->putJson(route('project.update', $project), ['name' => 'Blocked project'])
+            ->assertTooManyRequests()->assertHeader('X-RateLimit-Limit', '30');
+        $this->getJson(route('project.index'))->assertOk()
+            ->assertHeader('X-RateLimit-Limit', '300')
+            ->assertHeader('X-RateLimit-Remaining', '299');
+        $this->getJson(route('project.show', $project))->assertOk()
+            ->assertJsonPath('data.name', 'Saved project')
+            ->assertHeader('X-RateLimit-Limit', '300')
+            ->assertHeader('X-RateLimit-Remaining', '298');
+
+        $this->assertDatabaseHas('projects', ['id' => $project->id, 'name' => 'Saved project']);
+    }
 }

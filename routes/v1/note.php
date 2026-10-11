@@ -3,7 +3,7 @@
 use App\Http\Controllers\Note\StandaloneNoteController;
 use Illuminate\Support\Facades\Route;
 
-Route::prefix('notes')->name('notes.')->middleware('auth:api')->group(function () {
+Route::prefix('notes')->name('notes.')->middleware(['auth:api', 'throttle:notes'])->withoutMiddleware('throttle:api')->group(function () {
     Route::get('/', [StandaloneNoteController::class, 'index'])->name('index');
     Route::post('/', [StandaloneNoteController::class, 'store'])->name('store');
     Route::get('/tree', [StandaloneNoteController::class, 'tree'])->name('tree');
