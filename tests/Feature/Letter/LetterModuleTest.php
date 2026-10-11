@@ -392,6 +392,104 @@ class LetterModuleTest extends TestCase
         $this->assertNotNull($letter->exported_at);
     }
 
+    public function test_export_page_text_runs_keep_the_spaces_between_styled_words(): void
+    {
+        $user = User::factory()->create();
+        $letter = Letter::factory()->for($user)->create();
+        Passport::actingAs($user);
+        $runs = [
+            ['type' => 'text', 'text' => 'Lorem Ipsum', 'styles' => ['bold' => true]],
+            ['type' => 'text', 'text' => ' is ', 'styles' => []],
+            ['type' => 'text', 'text' => 'simply', 'styles' => ['italic' => true]],
+            ['type' => 'text', 'text' => ' dummy text.', 'styles' => []],
+        ];
+        $pages = $this->measuredPages(2);
+        $pages[0]['cover'] = [
+            'theme' => 'light',
+            'show_logo' => true,
+            'subheader' => 'A LETTER',
+            'description_blocks' => [['type' => 'paragraph', 'content' => $runs]],
+            'author_name' => 'Mina Reyes',
+            'date_label' => '',
+            'avatar_url' => null,
+            'hero_image_url' => null,
+            'section_order' => ['header', 'title', 'entry', 'author', 'hero'],
+        ];
+        $pages[1]['blocks'] = [['type' => 'paragraph', 'content' => $runs]];
+
+        $exportUuid = $this->postJson(route('letters.exports.store', $letter->uuid), [
+            'format' => LetterExportFormat::PORTRAIT->value,
+            'pages' => $pages,
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.pages.0.cover.description_blocks.0.content.1.text', ' is ')
+            ->assertJsonPath('data.pages.1.blocks.0.content.1.text', ' is ')
+            ->assertJsonPath('data.pages.1.blocks.0.content.3.text', ' dummy text.')
+            ->json('data.uuid');
+
+        $pages[1]['blocks'][0]['content'][3]['text'] = ' dummy text, edited. ';
+
+        $this->patchJson(route('letters.exports.update', [$letter->uuid, $exportUuid]), [
+            'pages' => $pages,
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.export.pages.0.cover.description_blocks.0.content.1.text', ' is ')
+            ->assertJsonPath('data.export.pages.1.blocks.0.content.1.text', ' is ')
+            ->assertJsonPath('data.export.pages.1.blocks.0.content.3.text', ' dummy text, edited. ');
+    }
+
+    public function test_export_cover_keeps_the_byline_position_author_handle_and_display_toggles(): void
+    {
+        $user = User::factory()->create();
+        $letter = Letter::factory()->for($user)->create();
+        Passport::actingAs($user);
+        $pages = $this->measuredPages(2);
+        $pages[0]['cover'] = [
+            'theme' => 'light',
+            'show_logo' => true,
+            'subheader' => 'A LETTER',
+            'description_blocks' => [['type' => 'paragraph', 'content' => 'A short excerpt.']],
+            'author_name' => 'Mina Reyes',
+            'author_handle' => '@minareads',
+            'date_label' => 'Oct 11, 2026',
+            'avatar_url' => null,
+            'show_author' => true,
+            'show_date' => false,
+            'show_page_numbers' => false,
+            'show_signature' => false,
+            'hero_image_url' => null,
+            'section_order' => ['header', 'title', 'author', 'hero', 'entry'],
+        ];
+
+        $exportUuid = $this->postJson(route('letters.exports.store', $letter->uuid), [
+            'format' => LetterExportFormat::PORTRAIT->value,
+            'pages' => $pages,
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.pages.0.cover.author_handle', '@minareads')
+            ->assertJsonPath('data.pages.0.cover.show_date', false)
+            ->assertJsonPath('data.pages.0.cover.byline_placement', 'top')
+            ->assertJsonPath('data.pages.0.cover.section_order', ['header', 'title', 'author', 'hero', 'entry'])
+            ->json('data.uuid');
+
+        $pages[0]['cover']['show_page_numbers'] = true;
+        $pages[0]['cover']['author_handle'] = '@mina';
+        $pages[0]['cover']['byline_placement'] = 'bottom';
+        $pages[1]['signature'] = ['name' => '', 'handle' => ''];
+
+        $this->patchJson(route('letters.exports.update', [$letter->uuid, $exportUuid]), [
+            'pages' => $pages,
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.export.pages.0.cover.author_handle', '@mina')
+            ->assertJsonPath('data.export.pages.0.cover.show_author', true)
+            ->assertJsonPath('data.export.pages.0.cover.byline_placement', 'bottom')
+            ->assertJsonPath('data.export.pages.0.cover.show_page_numbers', true)
+            ->assertJsonPath('data.export.pages.0.cover.show_signature', false)
+            ->assertJsonPath('data.export.pages.0.cover.section_order.2', 'author')
+            ->assertJsonPath('data.export.pages.1.signature.name', '');
+    }
+
     public function test_browser_measured_export_accepts_more_than_ten_auto_fitted_pages(): void
     {
         $user = User::factory()->create();
@@ -479,7 +577,9 @@ class LetterModuleTest extends TestCase
         $this->assertSame('', $export->pages[0]['cover']['hero_image_caption']);
         $this->assertSame('center', $export->pages[0]['cover']['hero_image_caption_alignment']);
         $this->assertSame('overlay', $export->pages[0]['cover']['hero_image_caption_placement']);
-        $this->assertSame('author', $export->pages[0]['cover']['section_order'][4]);
+        $this->assertSame('author', $export->pages[0]['cover']['section_order'][3]);
+        $this->assertSame('@'.$letter->user->username, $export->pages[0]['cover']['author_handle']);
+        $this->assertTrue($export->pages[0]['cover']['show_page_numbers']);
     }
 
     public function test_ready_export_pages_can_be_customized_and_are_normalized(): void
@@ -609,7 +709,8 @@ class LetterModuleTest extends TestCase
             ->assertJsonPath('data.export.pages.0.cover.hero_image_caption_placement', 'below')
             ->assertJsonPath('data.export.pages.0.cover.section_order.0', 'title')
             ->assertJsonPath('data.export.pages.0.cover.section_order.1', 'entry')
-            ->assertJsonPath('data.export.pages.0.cover.section_order.4', 'author')
+            ->assertJsonPath('data.export.pages.0.cover.section_order.2', 'author')
+            ->assertJsonPath('data.export.pages.0.cover.section_order.4', 'header')
             ->assertJsonPath('data.export.pages.1.content_source', 'cover_entry')
             ->assertJsonPath('data.export.pages.1.continuation_label', 'Cover entry · Continued')
             ->assertJsonPath('data.export.pages.2.kind', 'body')

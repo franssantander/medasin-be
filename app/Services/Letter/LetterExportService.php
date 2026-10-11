@@ -15,6 +15,9 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class LetterExportService
 {
+    /** Blog-post order: kicker, title, excerpt, byline, then the image. */
+    private const COVER_SECTIONS = ['header', 'title', 'entry', 'author', 'hero'];
+
     public function __construct(
         private readonly LetterPaginationService $pagination,
         private readonly LetterContentService $content,
@@ -221,10 +224,16 @@ class LetterExportService
                 $cover['description_blocks'] ?? $fallback['description_blocks'],
             ),
             'author_name' => (string) ($cover['author_name'] ?? $fallback['author_name']),
+            'author_handle' => (string) ($cover['author_handle'] ?? $fallback['author_handle']),
             'date_label' => (string) ($cover['date_label'] ?? $fallback['date_label']),
             'avatar_url' => array_key_exists('avatar_url', $cover)
                 ? $cover['avatar_url']
                 : $fallback['avatar_url'],
+            'show_author' => (bool) ($cover['show_author'] ?? $fallback['show_author']),
+            'byline_placement' => $cover['byline_placement'] ?? $fallback['byline_placement'],
+            'show_date' => (bool) ($cover['show_date'] ?? $fallback['show_date']),
+            'show_page_numbers' => (bool) ($cover['show_page_numbers'] ?? $fallback['show_page_numbers']),
+            'show_signature' => (bool) ($cover['show_signature'] ?? $fallback['show_signature']),
             'hero_image_url' => $heroImageUrl,
             'hero_image_aspect_ratio' => $heroImageUrl
                 ? $this->normalizeCoverHeroAspectRatio(
@@ -251,16 +260,14 @@ class LetterExportService
     /** @param  array<int, mixed>  $sections */
     private function normalizeCoverSectionOrder(array $sections): array
     {
+        // The author byline is reorderable like every other cover section.
         $normalized = collect($sections)
             ->flatMap(fn (mixed $section): array => $section === 'content'
                 ? ['title', 'entry']
-                : (in_array($section, ['header', 'title', 'entry', 'author', 'hero'], true) ? [$section] : []))
-            ->reject(fn (string $section): bool => $section === 'author')
-            ->merge(['header', 'title', 'entry', 'hero'])
+                : (in_array($section, self::COVER_SECTIONS, true) ? [$section] : []))
+            ->merge(self::COVER_SECTIONS)
             ->unique()
-            ->values()
-            ->take(4)
-            ->push('author');
+            ->values();
 
         return $normalized->all();
     }
@@ -288,14 +295,20 @@ class LetterExportService
                 'content' => (string) ($letter->subtitle ?? ''),
             ]],
             'author_name' => trim($letter->user->first_name.' '.$letter->user->last_name),
-            'date_label' => $letter->created_at?->format('F j \\a\\t g:i A') ?? '',
+            'author_handle' => '@'.$letter->user->username,
+            'date_label' => $letter->created_at?->format('M j, Y') ?? '',
             'avatar_url' => null,
+            'show_author' => true,
+            'byline_placement' => 'top',
+            'show_date' => true,
+            'show_page_numbers' => true,
+            'show_signature' => true,
             'hero_image_url' => null,
             'hero_image_aspect_ratio' => null,
             'hero_image_caption' => '',
             'hero_image_caption_alignment' => 'center',
             'hero_image_caption_placement' => 'overlay',
-            'section_order' => ['header', 'title', 'entry', 'hero', 'author'],
+            'section_order' => self::COVER_SECTIONS,
         ];
     }
 
