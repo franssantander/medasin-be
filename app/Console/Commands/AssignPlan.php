@@ -15,7 +15,7 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 
-#[Signature('plans:assign {user_uuid} {plan_slug} {--reference=} {--expires-at=} {--lifetime}')]
+#[Signature('plans:assign {user_uuid} {plan_slug} {--reference=} {--expires-at=}')]
 #[Description('Assign a product plan with an idempotent reference and explicit access period')]
 class AssignPlan extends Command
 {
@@ -35,8 +35,7 @@ class AssignPlan extends Command
             ])->validate();
             $user = User::query()->where('uuid', $input['user_uuid'])->firstOrFail();
             $plan = Plan::withTrashed()->where('slug', $input['plan_slug'])->firstOrFail();
-            $kind = $this->option('lifetime') ? PlanGrantType::LIFETIME
-                : ($plan->slug === 'free' ? PlanGrantType::FREE : PlanGrantType::RECURRING);
+            $kind = $plan->slug === 'free' ? PlanGrantType::FREE : PlanGrantType::RECURRING;
             $assignment = $assignments->assign(
                 $user, $plan, $kind,
                 isset($input['expires_at']) ? CarbonImmutable::parse($input['expires_at']) : null,

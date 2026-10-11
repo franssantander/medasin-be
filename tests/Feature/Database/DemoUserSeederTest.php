@@ -35,7 +35,7 @@ it('creates exactly three verified demo profiles with their explicit effective p
     foreach ([
         'free' => ['name' => 'Free', 'grant' => PlanGrantType::FREE, 'expiry' => null, 'limits' => ['projects' => 10, 'areas' => 5, 'resources' => 100], 'usage' => ['projects' => 0, 'areas' => 0, 'resources' => 0]],
         'focus' => ['name' => 'Focus', 'grant' => PlanGrantType::RECURRING, 'expiry' => '2027-10-10T04:00:00.000000Z', 'limits' => ['projects' => 50, 'areas' => 20, 'resources' => 1000], 'usage' => ['projects' => 9, 'areas' => 8, 'resources' => 4]],
-        'clarity' => ['name' => 'Clarity', 'grant' => PlanGrantType::LIFETIME, 'expiry' => null, 'limits' => ['projects' => null, 'areas' => null, 'resources' => null], 'usage' => ['projects' => 9, 'areas' => 8, 'resources' => 4]],
+        'clarity' => ['name' => 'Clarity', 'grant' => PlanGrantType::RECURRING, 'expiry' => '2026-11-10T04:00:00.000000Z', 'limits' => ['projects' => null, 'areas' => null, 'resources' => null], 'usage' => ['projects' => 9, 'areas' => 8, 'resources' => 4]],
     ] as $slug => $expected) {
         $user = User::query()->where('email', $slug.'@example.com')->sole();
         $this->assertSame($expected['name'], $user->first_name);
@@ -67,6 +67,54 @@ it('creates exactly three verified demo profiles with their explicit effective p
     $this->assertDatabaseEmpty('jobs');
     $this->assertDatabaseEmpty('notifications');
     $this->assertDatabaseEmpty('letter_exports');
+});
+
+it('gives a new Clarity demo one calendar month in UTC with month-end clamping', function (): void {
+    $this->travelTo('2027-01-31T23:30:00Z');
+    Storage::fake('public');
+    Storage::fake('local');
+    User::factory()->create(['email' => 'free@example.com']);
+    User::factory()->create(['email' => 'focus@example.com']);
+
+    $this->seed(DemoUserSeeder::class);
+
+    $clarity = User::query()->where('email', 'clarity@example.com')->sole();
+    $assignment = $clarity->planAssignments()->sole();
+    $this->assertSame(PlanGrantType::RECURRING, $assignment->grant_type);
+    $this->assertSame('2027-01-31T23:30:00.000000Z', $assignment->starts_at->toISOString());
+    $this->assertSame('2027-02-28T23:30:00.000000Z', $assignment->ends_at->toISOString());
+    $this->assertSame(['projects' => null, 'areas' => null, 'resources' => null], app(PlanEntitlementService::class)->resolve($clarity)['limits']);
+});
+
+it('preserves an expired Clarity demo assignment and edited content when seeding again', function (): void {
+    $this->travelTo('2026-10-10T04:00:00Z');
+    Storage::fake('public');
+    Storage::fake('local');
+    $this->seed(DemoUserSeeder::class);
+    $clarity = User::query()->where('email', 'clarity@example.com')->sole();
+    $clarity->update(['first_name' => 'My Clarity', 'password' => 'my edited password']);
+    $area = $clarity->areas()->where('slug', 'health')->sole();
+    $area->update(['name' => 'My health', 'archived_at' => now()]);
+    $assignment = $clarity->planAssignments()->sole();
+    $userState = $clarity->fresh()->getRawOriginal();
+    $areaState = $area->fresh()->getRawOriginal();
+    $assignmentState = $assignment->getRawOriginal();
+    $localPaths = Storage::disk('local')->allFiles();
+    $publicPaths = Storage::disk('public')->allFiles();
+    $this->travelTo('2026-11-10T04:00:00Z');
+
+    $this->seed(DemoUserSeeder::class);
+
+    $this->assertDatabaseCount('users', 3);
+    $this->assertDatabaseCount('plan_assignments', 3);
+    $this->assertSame($userState, $clarity->fresh()->getRawOriginal());
+    $this->assertSame($areaState, $area->fresh()->getRawOriginal());
+    $this->assertSame($assignmentState, $assignment->fresh()->getRawOriginal());
+    $this->assertSame($localPaths, Storage::disk('local')->allFiles());
+    $this->assertSame($publicPaths, Storage::disk('public')->allFiles());
+    $entitlements = app(PlanEntitlementService::class)->resolve($clarity);
+    $this->assertSame('free', $entitlements['plan']['slug']);
+    $this->assertSame(['projects' => 9, 'areas' => 8, 'resources' => 4], app(PlanQuotaService::class)->usage($clarity));
 });
 
 it('leaves the Free demo workspace empty including archive trash and focus settings', function (): void {

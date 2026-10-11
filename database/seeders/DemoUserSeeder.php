@@ -72,14 +72,18 @@ class DemoUserSeeder extends Seeder
                 ]);
                 $grantType = match ($slug) {
                     'free' => PlanGrantType::FREE,
-                    'focus' => PlanGrantType::RECURRING,
-                    'clarity' => PlanGrantType::LIFETIME,
+                    'focus', 'clarity' => PlanGrantType::RECURRING,
+                };
+                $expiresAt = match ($slug) {
+                    'free' => null,
+                    'focus' => CarbonImmutable::now('UTC')->addYear(),
+                    'clarity' => CarbonImmutable::now('UTC')->addMonthNoOverflow(),
                 };
                 app(PlanAssignmentService::class)->assign(
                     $user,
                     Plan::query()->where('slug', $slug)->sole(),
                     $grantType,
-                    $slug === 'focus' ? CarbonImmutable::now('UTC')->addYear() : null,
+                    $expiresAt,
                     $slug.'-demo',
                     'demo',
                 );

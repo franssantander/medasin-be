@@ -1,5 +1,6 @@
 <?php
 
+use App\Enum\PlanGrantType;
 use App\Models\Plan;
 use App\Models\PlanAssignment;
 use App\Models\TrashEntry;
@@ -405,10 +406,6 @@ it('allows Core recovery with effective unlimited entitlements', function (
     if ($mode === 'disabled') {
         config(['plans.enforcement_enabled' => false]);
         Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 0]]);
-    } elseif ($mode === 'lifetime') {
-        $plan = Plan::where('slug', 'clarity')->sole();
-        $plan->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 0]]);
-        PlanAssignment::factory()->for($user)->for($plan)->lifetime()->create();
     } else {
         PlanAssignment::factory()->for($user)->for(Plan::where('slug', 'clarity')->sole())->create();
     }
@@ -431,9 +428,6 @@ it('allows Core recovery with effective unlimited entitlements', function (
     'Clarity projects' => ['clarity', 'projects', 'project'],
     'Clarity areas' => ['clarity', 'areas', 'area'],
     'Clarity resources' => ['clarity', 'resources', 'resource'],
-    'lifetime projects' => ['lifetime', 'projects', 'project'],
-    'lifetime areas' => ['lifetime', 'areas', 'area'],
-    'lifetime resources' => ['lifetime', 'resources', 'resource'],
     'disabled projects' => ['disabled', 'projects', 'project'],
     'disabled areas' => ['disabled', 'areas', 'area'],
     'disabled resources' => ['disabled', 'resources', 'resource'],
@@ -518,6 +512,85 @@ it('keeps existing records readable editable and recoverable after downgrade', f
 
     $this->assertDatabaseHas('projects', ['id' => $project->id, 'name' => 'Edited work', 'archived_at' => null]);
 });
+
+it('preserves Core records and applies Free quota when monthly Clarity expires', function (
+    string $feature, string $prefix, string $field, int $limit, string $updateMethod,
+): void {
+    $this->travelTo('2026-10-11T00:00:00Z');
+    $this->seed(PlanSeeder::class);
+    $user = User::factory()->create();
+    $assignment = PlanAssignment::factory()->for($user)->for(Plan::where('slug', 'clarity')->sole())->create([
+        'ends_at' => '2026-11-11T00:00:00Z',
+    ]);
+    createQuotaItems($user, $feature, $limit);
+    $item = $user->{$feature}()->firstOrFail();
+    Passport::actingAs($user);
+    $this->postJson(route($prefix.'.store'), [$field => 'Created during Clarity'])->assertCreated();
+    $this->travelTo('2026-11-11T00:00:00Z');
+
+    $this->getJson(route($prefix.'.show', $item))->assertOk();
+    $this->json($updateMethod, route($prefix.'.update', $item), [$field => 'Edited after expiry'])->assertOk();
+    $this->postJson(route($prefix.'.archive', $item))->assertOk();
+    $this->postJson(route($prefix.'.restore', $item))->assertOk();
+    $this->postJson(route($prefix.'.store'), [$field => 'Denied after expiry'])->assertForbidden()
+        ->assertJsonPath('code', 'PLAN_LIMIT_EXCEEDED')
+        ->assertJsonPath('meta', ['feature' => $feature, 'usage' => $limit + 1, 'limit' => $limit]);
+
+    $this->assertDatabaseHas($feature, ['id' => $item->id, $field => 'Edited after expiry', 'archived_at' => null]);
+    $this->assertDatabaseCount($feature, $limit + 1);
+    $this->assertDatabaseHas('plan_assignments', ['id' => $assignment->id, 'grant_type' => 'recurring', 'ends_at' => '2026-11-11 00:00:00']);
+
+    $this->deleteJson(route($prefix.'.destroy', $item))->assertOk();
+    $entry = TrashEntry::where('subject_uuid', $item->uuid)->sole();
+    $this->getJson(route('trash.index', ['type' => $prefix]))->assertOk()
+        ->assertJsonPath('data.data.0.can_restore', false);
+    $this->postJson(route('trash.restore', $entry))->assertForbidden()
+        ->assertJsonPath('code', 'PLAN_LIMIT_EXCEEDED')
+        ->assertJsonPath('meta', ['feature' => $feature, 'usage' => $limit, 'limit' => $limit]);
+    $this->assertSoftDeleted($item);
+    $this->assertModelExists($entry);
+
+    $this->artisan('plans:assign', [
+        'user_uuid' => $user->uuid, 'plan_slug' => 'clarity', '--reference' => 'monthly-renewal',
+        '--expires-at' => '2026-12-11T00:00:00Z',
+    ])->assertSuccessful();
+    $this->postJson(route('trash.restore', $entry))->assertOk();
+
+    $this->assertNotSoftDeleted($item);
+    $this->assertModelMissing($entry);
+    expect($user->{$feature}()->count())->toBe($limit + 1);
+})->with([
+    'projects' => ['projects', 'project', 'name', 10, 'PUT'],
+    'areas' => ['areas', 'area', 'name', 5, 'PUT'],
+    'resources' => ['resources', 'resource', 'title', 100, 'PATCH'],
+]);
+
+it('requires Free capacity for Core recovery under a legacy lifetime grant', function (
+    string $feature, string $prefix,
+): void {
+    $this->seed(PlanSeeder::class);
+    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 0]]);
+    $user = User::factory()->create();
+    PlanAssignment::factory()->for($user)->for(Plan::where('slug', 'clarity')->sole())->create([
+        'grant_type' => PlanGrantType::LIFETIME, 'ends_at' => null,
+    ]);
+    createQuotaItems($user, $feature, 1);
+    $item = $user->{$feature}()->sole();
+    Passport::actingAs($user);
+    $this->deleteJson(route($prefix.'.destroy', $item))->assertOk();
+    $entry = TrashEntry::where('subject_uuid', $item->uuid)->sole();
+
+    $this->postJson(route('trash.restore', $entry))->assertForbidden()
+        ->assertJsonPath('code', 'PLAN_LIMIT_EXCEEDED')
+        ->assertJsonPath('meta', ['feature' => $feature, 'usage' => 0, 'limit' => 0]);
+
+    $this->assertSoftDeleted($item);
+    $this->assertModelExists($entry);
+})->with([
+    'projects' => ['projects', 'project'],
+    'areas' => ['areas', 'area'],
+    'resources' => ['resources', 'resource'],
+]);
 
 it('denies resource creation before storing attachments tags or associations', function (): void {
     Storage::fake('local');

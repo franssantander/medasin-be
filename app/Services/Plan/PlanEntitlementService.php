@@ -7,6 +7,7 @@ use App\Enum\PlanAssignmentStatus;
 use App\Enum\PlanGrantType;
 use App\Models\Plan;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use RuntimeException;
 
 class PlanEntitlementService
@@ -20,7 +21,17 @@ class PlanEntitlementService
         $assignment = $user->planAssignments()
             ->where('status', PlanAssignmentStatus::ACTIVE)
             ->where('starts_at', '<=', $now)
-            ->where(fn ($query) => $query->whereNull('ends_at')->orWhere('ends_at', '>', $now))
+            ->where(function (Builder $query) use ($now): void {
+                $query->where(function (Builder $query): void {
+                    $query->where('grant_type', PlanGrantType::FREE)
+                        ->whereNull('ends_at')
+                        ->whereHas('plan', fn (Builder $plan): Builder => $plan->where('slug', 'free'));
+                })->orWhere(function (Builder $query) use ($now): void {
+                    $query->where('grant_type', PlanGrantType::RECURRING)
+                        ->where('ends_at', '>', $now)
+                        ->whereHas('plan', fn (Builder $plan): Builder => $plan->where('slug', '!=', 'free'));
+                });
+            })
             ->with('plan')
             ->orderByDesc('starts_at')->orderByDesc('id')
             ->first();
@@ -31,7 +42,7 @@ class PlanEntitlementService
             throw new RuntimeException('The assigned plan definition is unavailable.');
         }
 
-        $limits = ! $enabled || $assignment?->grant_type === PlanGrantType::LIFETIME
+        $limits = ! $enabled
             ? array_fill_keys(array_column(CoreFeature::cases(), 'value'), null)
             : $this->limitsFor($plan);
 

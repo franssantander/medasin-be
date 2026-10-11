@@ -27,17 +27,9 @@ class PlanAssignmentFactory extends Factory
             'status' => PlanAssignmentStatus::ACTIVE,
             'grant_type' => PlanGrantType::RECURRING,
             'starts_at' => now()->startOfSecond(),
-            'ends_at' => now()->addMonth()->startOfSecond(),
+            'ends_at' => now()->addMonthNoOverflow()->startOfSecond(),
             'source' => 'admin',
             'source_reference' => fake()->uuid(),
         ];
-    }
-
-    public function lifetime(): static
-    {
-        return $this->state(fn (): array => [
-            'grant_type' => PlanGrantType::LIFETIME,
-            'ends_at' => null,
-        ]);
     }
 }

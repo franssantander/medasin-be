@@ -56,7 +56,7 @@ it('resolves the assigned tier without exposing assignment history', function (
     'Clarity' => ['clarity', ['projects' => null, 'areas' => null, 'resources' => null]],
 ]);
 
-it('falls back to Free for an ineligible paid assignment', function (string $state): void {
+it('falls back to Free for an ineligible paid assignment', function (string $slug, string $state): void {
     $this->travelTo('2026-10-10T00:00:00Z');
     $this->seed(PlanSeeder::class);
     $user = User::factory()->create();
@@ -65,15 +65,17 @@ it('falls back to Free for an ineligible paid assignment', function (string $sta
         'superseded' => ['status' => PlanAssignmentStatus::SUPERSEDED],
         'expired' => ['ends_at' => now()],
         'future' => ['starts_at' => now()->addMinute()],
+        'missing expiry' => ['ends_at' => null],
+        'free grant' => ['grant_type' => PlanGrantType::FREE, 'ends_at' => null],
     };
-    PlanAssignment::factory()->for($user)->for(Plan::where('slug', 'focus')->sole())->create($attributes);
+    PlanAssignment::factory()->for($user)->for(Plan::where('slug', $slug)->sole())->create($attributes);
     Passport::actingAs($user);
 
     $this->getJson(route('subscription.show'))->assertOk()
         ->assertJsonPath('data.plan.slug', 'free')
         ->assertJsonPath('data.grant_type', 'free')
         ->assertJsonPath('data.limits.projects', 10);
-})->with(['revoked', 'superseded', 'expired', 'future']);
+})->with(['focus', 'clarity'])->with(['revoked', 'superseded', 'expired', 'future', 'missing expiry', 'free grant']);
 
 it('keeps assigned access when its catalog offer is retired', function (bool $deleted): void {
     $this->seed(PlanSeeder::class);
@@ -93,22 +95,64 @@ it('keeps assigned access when its catalog offer is retired', function (bool $de
     $this->getJson(route('plan.index'))->assertOk()->assertJsonCount(2, 'data');
 })->with(['inactive' => [false], 'soft deleted' => [true]]);
 
-it('keeps lifetime access unlimited without renewal even if catalog limits change', function (): void {
+it('ignores legacy lifetime access while preserving readable history', function (bool $hasExpiry): void {
     $this->travelTo('2026-10-10T00:00:00Z');
     $this->seed(PlanSeeder::class);
     $user = User::factory()->create();
     $plan = Plan::where('slug', 'clarity')->sole();
-    $assignment = PlanAssignment::factory()->lifetime()->for($user)->for($plan)->create();
-    $plan->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 0]]);
-    $this->travel(100)->years();
+    $assignment = PlanAssignment::factory()->for($user)->for($plan)->create([
+        'grant_type' => PlanGrantType::LIFETIME,
+        'ends_at' => $hasExpiry ? now()->addMonth() : null,
+    ]);
+    $before = $assignment->fresh()->getRawOriginal();
     Passport::actingAs($user);
 
     $this->getJson(route('subscription.show'))->assertOk()
-        ->assertJsonPath('data.grant_type', 'lifetime')
+        ->assertJsonPath('data.plan.slug', 'free')
+        ->assertJsonPath('data.grant_type', 'free')
         ->assertJsonPath('data.expires_at', null)
+        ->assertJsonPath('data.limits', ['projects' => 10, 'areas' => 5, 'resources' => 100]);
+
+    expect($assignment->fresh()->grant_type)->toBe(PlanGrantType::LIFETIME)
+        ->and($assignment->fresh()->getRawOriginal())->toBe($before);
+})->with(['without expiry' => [false], 'with expiry' => [true]]);
+
+it('returns recurring unlimited Clarity only until its paid period expires', function (): void {
+    $this->travelTo('2026-10-11T00:00:00Z');
+    $this->seed(PlanSeeder::class);
+    $user = User::factory()->create();
+    $assignment = PlanAssignment::factory()->for($user)->for(Plan::where('slug', 'clarity')->sole())->create([
+        'ends_at' => '2026-11-11T00:00:00Z',
+    ]);
+    Passport::actingAs($user);
+    $this->travelTo('2026-11-10T23:59:59Z');
+
+    $this->getJson(route('subscription.show'))->assertOk()
+        ->assertJsonPath('data.plan.slug', 'clarity')
+        ->assertJsonPath('data.grant_type', 'recurring')
+        ->assertJsonPath('data.expires_at', '2026-11-11T00:00:00.000000Z')
         ->assertJsonPath('data.limits', ['projects' => null, 'areas' => null, 'resources' => null]);
 
-    $this->assertDatabaseHas('plan_assignments', ['id' => $assignment->id, 'status' => 'active', 'ends_at' => null]);
+    $this->travelTo('2026-11-11T00:00:00Z');
+    $this->getJson(route('subscription.show'))->assertOk()
+        ->assertJsonPath('data.plan.slug', 'free')
+        ->assertJsonPath('data.grant_type', 'free')
+        ->assertJsonPath('data.expires_at', null)
+        ->assertJsonPath('data.limits', ['projects' => 10, 'areas' => 5, 'resources' => 100]);
+
+    $this->assertDatabaseHas('plan_assignments', ['id' => $assignment->id, 'status' => 'active', 'ends_at' => '2026-11-11 00:00:00']);
+});
+
+it('does not grant recurring paid access through the Free catalog plan', function (): void {
+    $this->seed(PlanSeeder::class);
+    $user = User::factory()->create();
+    PlanAssignment::factory()->for($user)->for(Plan::where('slug', 'free')->sole())->create();
+    Passport::actingAs($user);
+
+    $this->getJson(route('subscription.show'))->assertOk()
+        ->assertJsonPath('data.plan.slug', 'free')
+        ->assertJsonPath('data.grant_type', 'free')
+        ->assertJsonPath('data.expires_at', null);
 });
 
 it('returns unlimited effective limits with enforcement disabled without rewriting assignments', function (): void {
