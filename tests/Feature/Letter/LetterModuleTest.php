@@ -490,6 +490,51 @@ class LetterModuleTest extends TestCase
             ->assertJsonPath('data.export.pages.1.signature.name', '');
     }
 
+    public function test_export_cover_keeps_the_original_cover_image_and_its_crop(): void
+    {
+        $user = User::factory()->create();
+        $letter = Letter::factory()->for($user)->create();
+        Passport::actingAs($user);
+        $pages = $this->measuredPages(2);
+        $pages[0]['cover'] = [
+            'theme' => 'light',
+            'show_logo' => true,
+            'subheader' => 'A LETTER',
+            'description_blocks' => [['type' => 'paragraph', 'content' => 'A short excerpt.']],
+            'author_name' => 'Mina Reyes',
+            'date_label' => 'Oct 11, 2026',
+            'avatar_url' => null,
+            'hero_image_url' => '/storage/cover-cropped.png',
+            'hero_image_original_url' => '/storage/cover-original.png',
+            'hero_image_crop' => ['x' => 0.1, 'y' => 0.2, 'width' => 0.8, 'height' => 0.45],
+            'hero_image_aspect_ratio' => 16 / 9,
+            'section_order' => ['header', 'title', 'entry', 'author', 'hero'],
+        ];
+
+        $exportUuid = $this->postJson(route('letters.exports.store', $letter->uuid), [
+            'format' => LetterExportFormat::PORTRAIT->value,
+            'pages' => $pages,
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.pages.0.cover.hero_image_original_url', '/storage/cover-original.png')
+            ->assertJsonPath('data.pages.0.cover.hero_image_crop.width', 0.8)
+            ->json('data.uuid');
+
+        $pages[0]['cover']['hero_image_crop'] = ['x' => 2, 'y' => 0, 'width' => 1, 'height' => 1];
+        $this->patchJson(route('letters.exports.update', [$letter->uuid, $exportUuid]), [
+            'pages' => $pages,
+        ])->assertUnprocessable();
+
+        $pages[0]['cover']['hero_image_url'] = null;
+        $pages[0]['cover']['hero_image_crop'] = null;
+        $this->patchJson(route('letters.exports.update', [$letter->uuid, $exportUuid]), [
+            'pages' => $pages,
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.export.pages.0.cover.hero_image_original_url', null)
+            ->assertJsonPath('data.export.pages.0.cover.hero_image_crop', null);
+    }
+
     public function test_browser_measured_export_accepts_more_than_ten_auto_fitted_pages(): void
     {
         $user = User::factory()->create();

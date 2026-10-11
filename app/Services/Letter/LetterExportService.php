@@ -235,6 +235,18 @@ class LetterExportService
             'show_page_numbers' => (bool) ($cover['show_page_numbers'] ?? $fallback['show_page_numbers']),
             'show_signature' => (bool) ($cover['show_signature'] ?? $fallback['show_signature']),
             'hero_image_url' => $heroImageUrl,
+            'hero_image_original_url' => $heroImageUrl
+                ? (array_key_exists('hero_image_original_url', $cover)
+                    ? $cover['hero_image_original_url']
+                    : ($fallback['hero_image_original_url'] ?? null))
+                : null,
+            'hero_image_crop' => $heroImageUrl
+                ? $this->normalizeCoverImageCrop(
+                    array_key_exists('hero_image_crop', $cover)
+                        ? $cover['hero_image_crop']
+                        : ($fallback['hero_image_crop'] ?? null),
+                )
+                : null,
             'hero_image_aspect_ratio' => $heroImageUrl
                 ? $this->normalizeCoverHeroAspectRatio(
                     $cover['hero_image_aspect_ratio']
@@ -272,6 +284,23 @@ class LetterExportService
         return $normalized->all();
     }
 
+    /** @return array{x: float, y: float, width: float, height: float}|null */
+    private function normalizeCoverImageCrop(mixed $crop): ?array
+    {
+        if (! is_array($crop)) {
+            return null;
+        }
+
+        $fraction = fn (string $key): float => min(1, max(0, (float) ($crop[$key] ?? 0)));
+
+        return [
+            'x' => $fraction('x'),
+            'y' => $fraction('y'),
+            'width' => $fraction('width'),
+            'height' => $fraction('height'),
+        ];
+    }
+
     private function normalizeCoverHeroAspectRatio(mixed $value): float
     {
         $ratio = is_numeric($value) ? (float) $value : (16 / 9);
@@ -304,6 +333,8 @@ class LetterExportService
             'show_page_numbers' => true,
             'show_signature' => true,
             'hero_image_url' => null,
+            'hero_image_original_url' => null,
+            'hero_image_crop' => null,
             'hero_image_aspect_ratio' => null,
             'hero_image_caption' => '',
             'hero_image_caption_alignment' => 'center',

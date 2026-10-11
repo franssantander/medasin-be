@@ -79,6 +79,8 @@ class LetterPaginationService
                 'show_page_numbers' => true,
                 'show_signature' => true,
                 'hero_image_url' => null,
+                'hero_image_original_url' => null,
+                'hero_image_crop' => null,
                 'hero_image_aspect_ratio' => null,
                 'hero_image_caption' => '',
                 'hero_image_caption_alignment' => 'center',
