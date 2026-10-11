@@ -215,6 +215,7 @@ class LetterExportService
         return [
             'theme' => $cover['theme'] ?? $fallback['theme'],
             'show_logo' => (bool) ($cover['show_logo'] ?? $fallback['show_logo']),
+            'logo_placement' => $cover['logo_placement'] ?? $fallback['logo_placement'] ?? 'right',
             'text_alignment' => $cover['text_alignment'] ?? $fallback['text_alignment'],
             'subheader' => (string) ($cover['subheader'] ?? $fallback['subheader']),
             'subheader_font_scale' => (float) ($cover['subheader_font_scale'] ?? $fallback['subheader_font_scale']),
@@ -314,6 +315,7 @@ class LetterExportService
         return [
             'theme' => 'light',
             'show_logo' => true,
+            'logo_placement' => 'right',
             'text_alignment' => 'center',
             'subheader' => 'A LETTER',
             'subheader_font_scale' => 1.0,

@@ -468,12 +468,14 @@ class LetterModuleTest extends TestCase
             ->assertJsonPath('data.pages.0.cover.author_handle', '@minareads')
             ->assertJsonPath('data.pages.0.cover.show_date', false)
             ->assertJsonPath('data.pages.0.cover.byline_placement', 'top')
+            ->assertJsonPath('data.pages.0.cover.logo_placement', 'right')
             ->assertJsonPath('data.pages.0.cover.section_order', ['header', 'title', 'author', 'hero', 'entry'])
             ->json('data.uuid');
 
         $pages[0]['cover']['show_page_numbers'] = true;
         $pages[0]['cover']['author_handle'] = '@mina';
         $pages[0]['cover']['byline_placement'] = 'bottom';
+        $pages[0]['cover']['logo_placement'] = 'center';
         $pages[1]['signature'] = ['name' => '', 'handle' => ''];
 
         $this->patchJson(route('letters.exports.update', [$letter->uuid, $exportUuid]), [
@@ -483,6 +485,7 @@ class LetterModuleTest extends TestCase
             ->assertJsonPath('data.export.pages.0.cover.author_handle', '@mina')
             ->assertJsonPath('data.export.pages.0.cover.show_author', true)
             ->assertJsonPath('data.export.pages.0.cover.byline_placement', 'bottom')
+            ->assertJsonPath('data.export.pages.0.cover.logo_placement', 'center')
             ->assertJsonPath('data.export.pages.0.cover.show_page_numbers', true)
             ->assertJsonPath('data.export.pages.0.cover.show_signature', false)
             ->assertJsonPath('data.export.pages.0.cover.section_order.2', 'author')
@@ -1077,6 +1080,7 @@ class LetterModuleTest extends TestCase
                     'cover' => [
                         'theme' => 'blue',
                         'show_logo' => true,
+                        'logo_placement' => 'left',
                         'text_alignment' => 'justify',
                         'subheader' => 'A LETTER',
                         'subheader_font_scale' => 0.6,
@@ -1107,6 +1111,7 @@ class LetterModuleTest extends TestCase
             ->assertUnprocessable()
             ->assertJsonValidationErrors([
                 'pages.0.cover.theme',
+                'pages.0.cover.logo_placement',
                 'pages.0.cover.text_alignment',
                 'pages.0.cover.subheader_font_scale',
                 'pages.0.cover.title_font_scale',

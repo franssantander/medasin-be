@@ -60,6 +60,7 @@ class LetterPaginationService
             'cover' => [
                 'theme' => 'light',
                 'show_logo' => true,
+                'logo_placement' => 'right',
                 'text_alignment' => 'center',
                 'subheader' => 'A LETTER',
                 'subheader_font_scale' => 1.0,
