@@ -177,21 +177,20 @@ class LetterModuleTest extends TestCase
             'updated_at' => '2026-09-09 12:00:00',
         ]);
         $newer = Letter::factory()->for($user)->create([
-            'title' => 'Exported letter',
-            'status' => LetterStatus::EXPORTED,
-            'exported_at' => '2026-09-10 12:00:00',
+            'title' => 'Finished letter',
+            'done_at' => '2026-09-10 12:00:00',
             'updated_at' => '2026-09-10 12:00:00',
         ]);
         Letter::factory()->for($user)->create(['title' => 'Deleted letter'])->delete();
         Letter::factory()->for($otherUser)->create(['title' => 'Private letter']);
         Passport::actingAs($user);
 
-        $this->getJson(route('letters.index', ['status' => 'exported', 'per_page' => 1]))
+        $this->getJson(route('letters.index', ['status' => 'done', 'per_page' => 1]))
             ->assertOk()
             ->assertJsonPath('data.total', 1)
             ->assertJsonCount(1, 'data.data')
             ->assertJsonPath('data.data.0.uuid', $newer->uuid)
-            ->assertJsonPath('data.data.0.title', 'Exported letter')
+            ->assertJsonPath('data.data.0.title', 'Finished letter')
             ->assertJsonMissingPath('data.data.0.content');
 
         $this->getJson(route('letters.index', ['per_page' => 100]))

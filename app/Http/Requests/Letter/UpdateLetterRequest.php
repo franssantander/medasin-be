@@ -26,6 +26,7 @@ class UpdateLetterRequest extends FormRequest
             'title' => ['sometimes', 'required', 'string', 'max:120'],
             'subtitle' => ['sometimes', 'nullable', 'string', 'max:240'],
             'content' => ['sometimes', 'required', 'string', 'json'],
+            'done' => ['sometimes', 'boolean'],
         ];
     }
 

@@ -3,10 +3,12 @@
 namespace App\Services\Letter;
 
 use App\Data\Letter\LetterData;
+use App\Enum\LetterListFilter;
 use App\Enum\LetterStatus;
 use App\Models\Letter;
 use App\Models\User;
 use App\Services\Profile\FileCleanupService;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -22,9 +24,13 @@ class LetterService
         private readonly FileCleanupService $fileCleanup,
     ) {}
 
-    public function listing(User $user, ?LetterStatus $status = null, int $perPage = 15): LengthAwarePaginator
-    {
-        $query = $user->letters()
+    public function listing(
+        User $user,
+        ?LetterListFilter $filter = null,
+        ?string $search = null,
+        int $perPage = 15,
+    ): LengthAwarePaginator {
+        $query = $this->searchQuery($user, $search)
             ->select([
                 'id',
                 'uuid',
@@ -36,6 +42,7 @@ class LetterService
                 'read_time_minutes',
                 'status',
                 'exported_at',
+                'done_at',
                 'created_at',
                 'updated_at',
             ])
@@ -46,11 +53,34 @@ class LetterService
             ->orderByDesc('updated_at')
             ->orderByDesc('id');
 
-        if ($status !== null) {
-            $query->where('status', $status->value);
-        }
+        match ($filter) {
+            LetterListFilter::DRAFT => $query->whereNull('done_at'),
+            LetterListFilter::DONE => $query->whereNotNull('done_at'),
+            null => null,
+        };
 
         return $query->paginate($perPage);
+    }
+
+    /**
+     * Tab totals for the library, narrowed by the search but not by the tab.
+     *
+     * @return array{all: int, draft: int, done: int}
+     */
+    public function counts(User $user, ?string $search = null): array
+    {
+        $totals = $this->searchQuery($user, $search)
+            ->toBase()
+            ->selectRaw('COUNT(*) AS total, COUNT(done_at) AS done')
+            ->first();
+        $all = (int) ($totals->total ?? 0);
+        $done = (int) ($totals->done ?? 0);
+
+        return [
+            'all' => $all,
+            'draft' => $all - $done,
+            'done' => $done,
+        ];
     }
 
     public function find(User $user, Letter $letter): Letter
@@ -108,9 +138,15 @@ class LetterService
                 $updates['word_count'] = $wordCount;
                 $updates['read_time_minutes'] = $this->content->readTimeMinutes($wordCount);
             }
+            // Exported pages describe the text, so only text edits reset them.
             if ($updates !== []) {
                 $updates['status'] = LetterStatus::DRAFT;
                 $updates['exported_at'] = null;
+            }
+            if (array_key_exists('done', $attributes)) {
+                $updates['done_at'] = $attributes['done'] ? ($letter->done_at ?? now()) : null;
+            }
+            if ($updates !== []) {
                 $letter->update($updates);
             }
 
@@ -151,6 +187,27 @@ class LetterService
                 'name' => $media->original_name,
                 'size' => $media->size,
             ];
+        });
+    }
+
+    /**
+     * @return HasMany<Letter, User>
+     */
+    private function searchQuery(User $user, ?string $search): HasMany
+    {
+        $query = $user->letters();
+        $search = trim((string) $search);
+        if ($search === '') {
+            return $query;
+        }
+
+        // Escape LIKE wildcards so search remains a literal substring match.
+        $pattern = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], mb_strtolower($search)).'%';
+
+        return $query->where(function ($query) use ($pattern): void {
+            foreach (['title', 'subtitle', 'content_text'] as $column) {
+                $query->orWhereRaw("LOWER({$column}) LIKE ? ESCAPE '!'", [$pattern]);
+            }
         });
     }
 

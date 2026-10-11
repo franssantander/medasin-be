@@ -19,6 +19,7 @@ class LetterResponseData extends Data
         public int $read_time_minutes,
         public ?string $status,
         public ?string $exported_at,
+        public ?string $done_at,
         public ?string $created_at,
         public ?string $updated_at,
         public ?array $author,
@@ -39,6 +40,7 @@ class LetterResponseData extends Data
             read_time_minutes: $letter->read_time_minutes,
             status: $letter->status?->value,
             exported_at: $letter->exported_at?->toISOString(),
+            done_at: $letter->done_at?->toISOString(),
             created_at: $letter->created_at?->toISOString(),
             updated_at: $letter->updated_at?->toISOString(),
             author: $user ? [

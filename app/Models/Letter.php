@@ -22,6 +22,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'read_time_minutes',
     'status',
     'exported_at',
+    'done_at',
 ])]
 class Letter extends Model
 {
@@ -41,6 +42,7 @@ class Letter extends Model
             'word_count' => 'integer',
             'read_time_minutes' => 'integer',
             'exported_at' => 'datetime',
+            'done_at' => 'datetime',
         ];
     }
 

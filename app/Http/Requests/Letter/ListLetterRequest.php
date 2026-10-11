@@ -2,7 +2,7 @@
 
 namespace App\Http\Requests\Letter;
 
-use App\Enum\LetterStatus;
+use App\Enum\LetterListFilter;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -26,7 +26,8 @@ class ListLetterRequest extends FormRequest
         return [
             'page' => ['sometimes', 'integer', 'min:1'],
             'per_page' => ['sometimes', 'integer', 'between:1,100'],
-            'status' => ['sometimes', Rule::in(array_column(LetterStatus::cases(), 'value'))],
+            'status' => ['sometimes', Rule::in(array_column(LetterListFilter::cases(), 'value'))],
+            'search' => ['sometimes', 'nullable', 'string', 'max:255'],
         ];
     }
 }

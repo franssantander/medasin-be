@@ -11,5 +11,6 @@ class LetterData extends Data
         public string|Optional $title,
         public string|null|Optional $subtitle,
         public string|Optional $content,
+        public bool|Optional $done,
     ) {}
 }

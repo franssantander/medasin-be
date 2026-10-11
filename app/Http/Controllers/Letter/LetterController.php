@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Letter;
 
 use App\Data\Letter\LetterData;
 use App\Data\Letter\LetterResponseData;
-use App\Enum\LetterStatus;
+use App\Enum\LetterListFilter;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Letter\ListLetterRequest;
 use App\Http\Requests\Letter\StoreLetterMediaRequest;
@@ -26,17 +26,22 @@ class LetterController extends Controller
     public function index(ListLetterRequest $request): JsonResponse
     {
         $validated = $request->validated();
-        $status = isset($validated['status']) ? LetterStatus::from($validated['status']) : null;
+        $filter = isset($validated['status']) ? LetterListFilter::from($validated['status']) : null;
+        $search = $validated['search'] ?? null;
 
-        return $this->cached($request, function () use ($request, $status, $validated): JsonResponse {
+        return $this->cached($request, function () use ($request, $filter, $search, $validated): JsonResponse {
             $letters = $this->letterService->listing(
                 $request->user(),
-                $status,
+                $filter,
+                $search,
                 $validated['per_page'] ?? 15,
             );
             $letters->through(fn (Letter $letter): array => LetterResponseData::fromModel($letter)->toArray());
 
-            return $this->success($letters);
+            return $this->success([
+                ...$letters->toArray(),
+                'counts' => $this->letterService->counts($request->user(), $search),
+            ]);
         });
     }
 
