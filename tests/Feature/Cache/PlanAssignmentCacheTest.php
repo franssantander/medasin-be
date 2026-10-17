@@ -197,7 +197,7 @@ it('refreshes the public catalog when required definitions are reseeded', functi
     $this->seed(PlanSeeder::class);
     $this->getJson(route('plan.index'))->assertJsonPath('data.0.limits.projects', 10);
     Plan::where('slug', 'free')->sole()->updateOrFail([
-        'limits' => ['projects' => 99, 'areas' => 5, 'resources' => 100],
+        'limits' => ['projects' => 99, 'areas' => 5, 'resources' => 100, 'storage_mb' => null],
     ]);
     $this->getJson(route('plan.index'))->assertJsonPath('data.0.limits.projects', 99);
 

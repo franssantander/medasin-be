@@ -79,6 +79,51 @@ it('rejects conflicting reuse of a grant reference without superseding current a
     $this->assertDatabaseHas('plan_assignments', ['user_id' => $user->id, 'status' => 'active']);
 })->with(['account', 'plan', 'period']);
 
+it('grants one billing interval when no expiry is given, clamped to month end in UTC', function (string $slug): void {
+    $this->travelTo('2026-01-31T12:15:30Z');
+    $this->seed(PlanSeeder::class);
+    $user = User::factory()->create();
+
+    $this->artisan('plans:assign', [
+        'user_uuid' => $user->uuid, 'plan_slug' => $slug, '--reference' => 'monthly-grant',
+    ])->expectsOutputToContain('Access until: 2026-02-28T12:15:30')->assertSuccessful();
+
+    $this->assertDatabaseHas('plan_assignments', [
+        'user_id' => $user->id, 'status' => 'active', 'grant_type' => 'recurring',
+        'starts_at' => '2026-01-31 12:15:30', 'ends_at' => '2026-02-28 12:15:30',
+    ]);
+})->with(['Focus' => ['focus'], 'Clarity' => ['clarity']]);
+
+it('replays a derived-expiry grant without extending it', function (): void {
+    $this->travelTo('2026-10-10T00:00:00Z');
+    $this->seed(PlanSeeder::class);
+    $user = User::factory()->create();
+    $arguments = ['user_uuid' => $user->uuid, 'plan_slug' => 'focus', '--reference' => 'monthly-replay'];
+    $this->artisan('plans:assign', $arguments)->assertSuccessful();
+    $before = $user->planAssignments()->sole()->getRawOriginal();
+    $this->travel(3)->days();
+
+    $this->artisan('plans:assign', $arguments)->assertSuccessful();
+
+    expect($user->planAssignments()->sole()->getRawOriginal())->toBe($before);
+});
+
+it('snapshots the charged price and keeps it after the catalog price changes', function (): void {
+    $this->travelTo('2026-10-10T00:00:00Z');
+    $this->seed(PlanSeeder::class);
+    $user = User::factory()->create();
+
+    $this->artisan('plans:assign', [
+        'user_uuid' => $user->uuid, 'plan_slug' => 'clarity', '--reference' => 'priced-grant',
+    ])->assertSuccessful();
+    Plan::where('slug', 'clarity')->sole()->updateOrFail(['price_minor' => 19900]);
+
+    $this->assertDatabaseHas('plan_assignments', [
+        'user_id' => $user->id, 'source_reference' => 'priced-grant',
+        'price_minor' => 14900, 'currency' => 'PHP', 'billing_interval' => 'month',
+    ]);
+});
+
 it('rejects invalid operator grants without writing assignment history', function (string $slug, array $options): void {
     $this->travelTo('2026-10-10T00:00:00Z');
     $this->seed(PlanSeeder::class);
@@ -91,12 +136,10 @@ it('rejects invalid operator grants without writing assignment history', functio
     $this->assertDatabaseEmpty('plan_assignments');
 })->with([
     'missing reference' => ['focus', ['--reference' => null, '--expires-at' => '2026-11-10T00:00:00Z']],
-    'missing paid expiry' => ['focus', []],
     'expired paid access' => ['focus', ['--expires-at' => '2026-10-10T00:00:00Z']],
     'ambiguous timezone' => ['focus', ['--expires-at' => '2026-11-10 00:00:00']],
     'invalid calendar date' => ['focus', ['--expires-at' => '2026-02-30T00:00:00Z']],
     'free expiry' => ['free', ['--expires-at' => '2026-11-10T00:00:00Z']],
-    'missing Clarity expiry' => ['clarity', []],
     'expired Clarity access' => ['clarity', ['--expires-at' => '2026-10-10T00:00:00Z']],
     'unknown plan' => ['unknown', ['--expires-at' => '2026-11-10T00:00:00Z']],
 ]);
@@ -182,7 +225,7 @@ it('renews expired Clarity access with a fresh reference without replaying the o
     expect(app(PlanEntitlementService::class)->resolve($user))
         ->toMatchArray([
             'plan' => ['slug' => 'clarity', 'name' => 'Clarity'], 'grant_type' => 'recurring',
-            'limits' => ['projects' => null, 'areas' => null, 'resources' => null],
+            'limits' => ['projects' => null, 'areas' => null, 'resources' => null, 'storage_bytes' => 107374182400],
         ]);
 });
 

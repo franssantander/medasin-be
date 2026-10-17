@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 
 #[Signature('plans:assign {user_uuid} {plan_slug} {--reference=} {--expires-at=}')]
-#[Description('Assign a product plan with an idempotent reference and explicit access period')]
+#[Description('Assign a product plan with an idempotent reference; paid access lasts one billing interval unless --expires-at overrides it')]
 class AssignPlan extends Command
 {
     public function handle(PlanAssignmentService $assignments): int
@@ -42,6 +42,9 @@ class AssignPlan extends Command
                 $input['reference'],
             );
             $this->info('Plan assignment: '.$assignment->uuid);
+            if ($assignment->ends_at !== null) {
+                $this->info('Access until: '.$assignment->ends_at->toIso8601String());
+            }
 
             return self::SUCCESS;
         } catch (ValidationException $exception) {

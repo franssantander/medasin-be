@@ -74,16 +74,12 @@ class DemoUserSeeder extends Seeder
                     'free' => PlanGrantType::FREE,
                     'focus', 'clarity' => PlanGrantType::RECURRING,
                 };
-                $expiresAt = match ($slug) {
-                    'free' => null,
-                    'focus' => CarbonImmutable::now('UTC')->addYear(),
-                    'clarity' => CarbonImmutable::now('UTC')->addMonthNoOverflow(),
-                };
+                // Paid demos get one billing interval, derived from the plan.
                 app(PlanAssignmentService::class)->assign(
                     $user,
                     Plan::query()->where('slug', $slug)->sole(),
                     $grantType,
-                    $expiresAt,
+                    null,
                     $slug.'-demo',
                     'demo',
                 );

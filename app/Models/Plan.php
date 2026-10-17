@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enum\BillingInterval;
 use App\Enum\Currency;
 use App\Models\Concerns\HasUuid;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -10,19 +11,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-#[Fillable(['name', 'slug', 'description', 'currency', 'price', 'is_active', 'limits'])]
+#[Fillable(['name', 'slug', 'description', 'currency', 'billing_interval', 'price_minor', 'is_active', 'limits'])]
 class Plan extends Model
 {
     /** @use HasFactory<PlanFactory> */
     use HasFactory, HasUuid, SoftDeletes;
-
-    protected $appends = ['deprecated_limits'];
-
-    /** @return list<string> */
-    public function getDeprecatedLimitsAttribute(): array
-    {
-        return config('plans.deprecated_limits');
-    }
 
     public function assignments(): HasMany
     {
@@ -33,7 +26,8 @@ class Plan extends Model
     {
         return [
             'currency' => Currency::class,
-            'price' => 'integer',
+            'billing_interval' => BillingInterval::class,
+            'price_minor' => 'integer',
             'is_active' => 'boolean',
             'limits' => 'array',
         ];

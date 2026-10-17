@@ -246,7 +246,7 @@ it('returns 500 and preserves resource trash files and revisions when cleanup ca
 it('preserves cached views and recoverable files after quota denial then refreshes them when capacity is freed', function (string $store): void {
     config([
         'cache.api_reads.store' => $store, 'cache.api_reads.enabled' => true,
-        'plans.limits.free.resources' => 1,
+        'plans.tiers.free.limits.resources' => 1,
     ]);
     Storage::fake('local');
     $user = User::factory()->create();
@@ -325,9 +325,9 @@ it('resolves trash restore availability live after plan changes expiry and enfor
     $this->travelTo('2026-10-10T00:00:00Z');
     config(['cache.api_reads.store' => $store, 'cache.api_reads.enabled' => true, 'cache.api_reads.ttl' => 3600]);
     $this->seed(PlanSeeder::class);
-    Plan::query()->where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 10, 'areas' => 5, 'resources' => 1]]);
+    Plan::query()->where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 10, 'areas' => 5, 'resources' => 1, 'storage_mb' => null]]);
     $focus = Plan::query()->where('slug', 'focus')->sole();
-    $focus->updateOrFail(['limits' => ['projects' => 50, 'areas' => 20, 'resources' => 2]]);
+    $focus->updateOrFail(['limits' => ['projects' => 50, 'areas' => 20, 'resources' => 2, 'storage_mb' => null]]);
     $user = User::factory()->create();
     $resource = $user->resources()->create(['title' => 'Original reference']);
     $entry = app(TrashService::class)->delete($user, $resource, 'resource', $resource->title);

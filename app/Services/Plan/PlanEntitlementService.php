@@ -13,7 +13,7 @@ use RuntimeException;
 class PlanEntitlementService
 {
     /**
-     * @return array{plan: array{slug: string, name: string}, grant_type: string, expires_at: ?string, enforcement_enabled: bool, limits: array{projects: ?int, areas: ?int, resources: ?int}}
+     * @return array{plan: array{slug: string, name: string}, grant_type: string, expires_at: ?string, enforcement_enabled: bool, limits: array{projects: ?int, areas: ?int, resources: ?int, storage_bytes: ?int}}
      */
     public function resolve(User $user): array
     {
@@ -43,7 +43,7 @@ class PlanEntitlementService
         }
 
         $limits = ! $enabled
-            ? array_fill_keys(array_column(CoreFeature::cases(), 'value'), null)
+            ? [...array_fill_keys(array_column(CoreFeature::cases(), 'value'), null), 'storage_bytes' => null]
             : $this->limitsFor($plan);
 
         return [
@@ -55,23 +55,27 @@ class PlanEntitlementService
         ];
     }
 
-    /** @return array{projects: ?int, areas: ?int, resources: ?int} */
+    /** @return array{projects: ?int, areas: ?int, resources: ?int, storage_bytes: ?int} */
     public function limitsFor(?Plan $plan): array
     {
-        $definition = $plan ? $plan->limits : config('plans.limits.free');
+        $definition = $plan ? $plan->limits : config('plans.tiers.free.limits');
         $limits = [];
 
-        foreach (CoreFeature::cases() as $feature) {
-            if (! is_array($definition) || ! array_key_exists($feature->value, $definition)) {
-                throw new RuntimeException('A required Core plan limit is missing.');
+        foreach ([...array_column(CoreFeature::cases(), 'value'), 'storage_mb'] as $key) {
+            if (! is_array($definition) || ! array_key_exists($key, $definition)) {
+                throw new RuntimeException('A required plan limit is missing.');
             }
 
-            $limit = $definition[$feature->value];
+            $limit = $definition[$key];
             if ($limit !== null && (! is_int($limit) || $limit < 0)) {
-                throw new RuntimeException('Core plan limits must be non-negative integers or null.');
+                throw new RuntimeException('Plan limits must be non-negative integers or null.');
             }
-            $limits[$feature->value] = $limit;
+            $limits[$key] = $limit;
         }
+
+        $storageMb = $limits['storage_mb'];
+        unset($limits['storage_mb']);
+        $limits['storage_bytes'] = $storageMb === null ? null : $storageMb * 1024 * 1024;
 
         return $limits;
     }

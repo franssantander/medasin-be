@@ -7,6 +7,7 @@ use App\Enum\LetterListFilter;
 use App\Enum\LetterStatus;
 use App\Models\Letter;
 use App\Models\User;
+use App\Services\Plan\PlanQuotaService;
 use App\Services\Profile\FileCleanupService;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Http\UploadedFile;
@@ -22,6 +23,7 @@ class LetterService
     public function __construct(
         private readonly LetterContentService $content,
         private readonly FileCleanupService $fileCleanup,
+        private readonly PlanQuotaService $quota,
     ) {}
 
     public function listing(
@@ -159,6 +161,7 @@ class LetterService
         return DB::transaction(function () use ($letter, $file): array {
             $user = User::query()->lockForUpdate()->findOrFail($letter->user_id);
             $letter = $user->letters()->whereKey($letter->getKey())->firstOrFail();
+            $this->quota->assertCanStore($user, (int) $file->getSize());
             $directory = "letters/{$user->uuid}/{$letter->uuid}";
             $filename = $file->hashName();
             $path = "{$directory}/{$filename}";

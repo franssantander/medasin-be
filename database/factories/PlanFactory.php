@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enum\BillingInterval;
 use App\Enum\Currency;
 use App\Models\Plan;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -25,10 +26,11 @@ class PlanFactory extends Factory
             'slug' => fake()->unique()->slug(2),
             'description' => fake()->sentence(),
             'currency' => Currency::Peso,
-            'price' => fake()->numberBetween(0, 5000),
+            'billing_interval' => BillingInterval::MONTH,
+            'price_minor' => fake()->numberBetween(0, 500000),
             'is_active' => true,
             'limits' => [
-                ...config('plans.limits.free'),
+                ...config('plans.tiers.free.limits'),
                 ...array_fill_keys(config('plans.deprecated_limits'), null),
             ],
         ];

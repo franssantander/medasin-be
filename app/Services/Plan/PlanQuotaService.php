@@ -65,20 +65,64 @@ class PlanQuotaService
 
             $usage = $user->{$feature->value}()->count();
             if ($usage + $increment > $limit) {
-                $violations[$feature->value] = new PlanLimitExceededException($feature, $usage, $limit);
+                $violations[$feature->value] = new PlanLimitExceededException($feature->value, $usage, $limit);
             }
         }
 
         return $violations;
     }
 
-    /** @return array{projects: int, areas: int, resources: int} */
+    /** Call after taking the user-row lock in the upload's persistence transaction, before writing any file. */
+    public function assertCanStore(User $user, int $bytes): void
+    {
+        if (DB::transactionLevel() === 0) {
+            throw new LogicException('Quota checks require an account transaction.');
+        }
+        if ($bytes < 1 || ! config('plans.enforcement_enabled')) {
+            return;
+        }
+
+        $limit = $this->entitlements->resolve($user)['limits']['storage_bytes'];
+        if ($limit === null) {
+            return;
+        }
+
+        $usage = $this->storageUsage($user);
+        if ($usage + $bytes > $limit) {
+            throw PlanLimitExceededException::forStorage($usage, $limit);
+        }
+    }
+
+    /**
+     * Bytes of uploaded files the account holds. Trashed files still count because they
+     * stay on disk until purge; area backgrounds and profile images are not counted.
+     */
+    public function storageUsage(User $user): int
+    {
+        $attachments = DB::table('resource_attachments')
+            ->join('resources', 'resources.id', '=', 'resource_attachments.resource_id')
+            ->where('resources.user_id', $user->getKey())
+            ->sum('resource_attachments.size');
+        $notes = DB::table('note_media')
+            ->join('notes', 'notes.id', '=', 'note_media.note_id')
+            ->where('notes.user_id', $user->getKey())
+            ->sum('note_media.size');
+        $letters = DB::table('letter_media')
+            ->join('letters', 'letters.id', '=', 'letter_media.letter_id')
+            ->where('letters.user_id', $user->getKey())
+            ->sum('letter_media.size');
+
+        return (int) $attachments + (int) $notes + (int) $letters;
+    }
+
+    /** @return array{projects: int, areas: int, resources: int, storage_bytes: int} */
     public function usage(User $user): array
     {
         $usage = [];
         foreach (CoreFeature::cases() as $feature) {
             $usage[$feature->value] = $user->{$feature->value}()->count();
         }
+        $usage['storage_bytes'] = $this->storageUsage($user);
 
         return $usage;
     }

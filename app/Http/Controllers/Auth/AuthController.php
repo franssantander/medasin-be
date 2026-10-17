@@ -38,11 +38,17 @@ class AuthController extends Controller
     public function verifyEmail(VerifyEmailRequest $request): JsonResponse
     {
         $attributes = $request->validated();
+        $signIn = $request->boolean('sign_in', true);
         [$user, $accessCookie, $refreshCookie] = $this->authService->verifyEmail(
             $attributes['email'],
             $attributes['otp'],
             $request->boolean('remember_me', true),
+            $signIn,
         );
+
+        if (! $signIn) {
+            return $this->success(UserData::from($user), 'Email verified. Sign in to continue.');
+        }
 
         return $this->success(UserData::from($user), 'Email verified successfully.')
             ->withCookie($accessCookie)->withCookie($refreshCookie);

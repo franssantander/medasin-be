@@ -26,6 +26,7 @@ class VerifyEmailRequest extends FormRequest
             'email' => ['required', 'string', 'email', 'max:255'],
             'otp' => ['required', 'string', 'regex:/^[0-9]{6}$/D'],
             'remember_me' => ['sometimes', 'boolean'],
+            'sign_in' => ['sometimes', 'boolean'],
         ];
     }
 }

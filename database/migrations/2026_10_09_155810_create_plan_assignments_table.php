@@ -22,6 +22,9 @@ return new class extends Migration
             $table->timestampTz('ends_at')->nullable();
             $table->string('source', 64);
             $table->string('source_reference', 120);
+            $table->unsignedInteger('price_minor')->nullable();
+            $table->string('currency', 3)->nullable();
+            $table->string('billing_interval', 10)->nullable();
             $table->timestamps();
 
             $table->unique(['source', 'source_reference']);

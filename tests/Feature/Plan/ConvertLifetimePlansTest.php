@@ -43,7 +43,7 @@ it('converts current lifetime Clarity to one calendar month in UTC without overf
     expect(app(PlanEntitlementService::class)->resolve($user))->toMatchArray([
         'plan' => ['slug' => 'clarity', 'name' => 'Clarity'], 'grant_type' => 'recurring',
         'expires_at' => '2026-02-28T12:15:30.000000Z',
-        'limits' => ['projects' => null, 'areas' => null, 'resources' => null],
+        'limits' => ['projects' => null, 'areas' => null, 'resources' => null, 'storage_bytes' => 107374182400],
     ]);
 });
 
@@ -186,12 +186,12 @@ it('rejects an invalid historical Clarity definition without changing access and
     $revision = Cache::store('api_read_revisions')->get($revisionKey);
 
     expect(fn (): int => app(PlanAssignmentService::class)->convertLifetime())
-        ->toThrow(RuntimeException::class, 'A required Core plan limit is missing.');
+        ->toThrow(RuntimeException::class, 'A required plan limit is missing.');
 
     $this->assertDatabaseCount('plan_assignments', 1);
     expect($legacy->fresh()->getRawOriginal())->toBe($before);
     expect(Cache::store('api_read_revisions')->get($revisionKey))->toBe($revision);
-    $plan->updateOrFail(['limits' => ['projects' => null, 'areas' => null, 'resources' => null]]);
+    $plan->updateOrFail(['limits' => ['projects' => null, 'areas' => null, 'resources' => null, 'storage_mb' => null]]);
     expect(app(PlanAssignmentService::class)->convertLifetime())->toBe(1);
     $this->assertDatabaseCount('plan_assignments', 2);
 });

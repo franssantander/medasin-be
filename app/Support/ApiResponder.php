@@ -105,7 +105,7 @@ class ApiResponder
         if ($exception instanceof PlanLimitExceededException) {
             $payload['code'] = 'PLAN_LIMIT_EXCEEDED';
             $payload['meta'] = [
-                'feature' => $exception->feature->value,
+                'feature' => $exception->feature,
                 'usage' => $exception->usage,
                 'limit' => $exception->limit,
             ];

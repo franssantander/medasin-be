@@ -121,6 +121,47 @@ class EmailVerificationTest extends AuthTestCase
         Notification::assertSentToTimes($user, AuthOtpNotification::class, 1);
     }
 
+    public function test_verifies_without_signing_in_when_sign_in_is_false(): void
+    {
+        Notification::fake();
+        Event::fake([Verified::class]);
+        $user = User::factory()->unverified()->create();
+        $this->postJson(route('auth.resend-verification'), ['email' => $user->email])->assertAccepted();
+        $code = $this->latestOtp($user, AuthOtpPurpose::EMAIL_VERIFICATION)->code;
+
+        $this->postJson(route('auth.verify-email'), [
+            'email' => $user->email,
+            'otp' => $code,
+            'sign_in' => false,
+        ])->assertOk()->assertJsonPath('data.email', $user->email)
+            ->assertJsonPath('message', 'Email verified. Sign in to continue.')
+            ->assertCookieMissing('auth_token')->assertCookieMissing('refresh_token');
+
+        $this->assertTrue($user->fresh()->hasVerifiedEmail());
+        $this->assertNotNull(AuthOtp::where('user_id', $user->id)->sole()->consumed_at);
+        $this->assertDatabaseCount('oauth_access_tokens', 0);
+        $this->assertDatabaseCount('refresh_tokens', 0);
+        Event::assertDispatched(Verified::class, fn (Verified $event): bool => $event->user->id === $user->id);
+    }
+
+    public function test_returns_422_for_invalid_verification_sign_in_without_consuming_the_code(): void
+    {
+        Notification::fake();
+        $user = User::factory()->unverified()->create();
+        $this->postJson(route('auth.resend-verification'), ['email' => $user->email])->assertAccepted();
+        $code = $this->latestOtp($user, AuthOtpPurpose::EMAIL_VERIFICATION)->code;
+
+        $this->postJson(route('auth.verify-email'), [
+            'email' => $user->email,
+            'otp' => $code,
+            'sign_in' => 'nope',
+        ])->assertUnprocessable()->assertJsonValidationErrors('sign_in')
+            ->assertCookieMissing('auth_token')->assertCookieMissing('refresh_token');
+
+        $this->assertNull(AuthOtp::where('user_id', $user->id)->sole()->consumed_at);
+        $this->assertFalse($user->fresh()->hasVerifiedEmail());
+    }
+
     public function test_returns_422_for_replayed_email_otp_without_issuing_another_session(): void
     {
         $this->createPassportClient();

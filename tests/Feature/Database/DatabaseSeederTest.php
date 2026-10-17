@@ -167,11 +167,11 @@ class DatabaseSeederTest extends TestCase
         Storage::fake('local');
         User::factory()->create(['email' => 'test@example.com']);
         $this->seed(DatabaseSeeder::class);
-        Plan::query()->where('slug', 'free')->update(['price' => 50]);
+        Plan::query()->where('slug', 'free')->update(['price_minor' => 5000]);
 
         $this->seed(DatabaseSeeder::class);
 
         $this->assertDatabaseCount('plans', 3);
-        $this->assertDatabaseHas('plans', ['slug' => 'free', 'price' => 0]);
+        $this->assertDatabaseHas('plans', ['slug' => 'free', 'price_minor' => 0]);
     }
 }

@@ -15,6 +15,7 @@ use Database\Seeders\DemoUserSeeder;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Passport\Passport;
@@ -33,9 +34,9 @@ it('creates exactly three verified demo profiles with their explicit effective p
     $this->assertDatabaseCount('plan_assignments', 3);
     $this->assertDatabaseCount('oauth_clients', 1);
     foreach ([
-        'free' => ['name' => 'Free', 'grant' => PlanGrantType::FREE, 'expiry' => null, 'limits' => ['projects' => 10, 'areas' => 5, 'resources' => 100], 'usage' => ['projects' => 0, 'areas' => 0, 'resources' => 0]],
-        'focus' => ['name' => 'Focus', 'grant' => PlanGrantType::RECURRING, 'expiry' => '2027-10-10T04:00:00.000000Z', 'limits' => ['projects' => 50, 'areas' => 20, 'resources' => 1000], 'usage' => ['projects' => 9, 'areas' => 8, 'resources' => 4]],
-        'clarity' => ['name' => 'Clarity', 'grant' => PlanGrantType::RECURRING, 'expiry' => '2026-11-10T04:00:00.000000Z', 'limits' => ['projects' => null, 'areas' => null, 'resources' => null], 'usage' => ['projects' => 9, 'areas' => 8, 'resources' => 4]],
+        'free' => ['name' => 'Free', 'grant' => PlanGrantType::FREE, 'expiry' => null, 'limits' => ['projects' => 10, 'areas' => 5, 'resources' => 100, 'storage_bytes' => 1073741824], 'usage' => ['projects' => 0, 'areas' => 0, 'resources' => 0, 'storage_bytes' => 0]],
+        'focus' => ['name' => 'Focus', 'grant' => PlanGrantType::RECURRING, 'expiry' => '2026-11-10T04:00:00.000000Z', 'limits' => ['projects' => 50, 'areas' => 20, 'resources' => 1000, 'storage_bytes' => 10737418240], 'usage' => ['projects' => 9, 'areas' => 8, 'resources' => 4, 'storage_bytes' => 1840061]],
+        'clarity' => ['name' => 'Clarity', 'grant' => PlanGrantType::RECURRING, 'expiry' => '2026-11-10T04:00:00.000000Z', 'limits' => ['projects' => null, 'areas' => null, 'resources' => null, 'storage_bytes' => 107374182400], 'usage' => ['projects' => 9, 'areas' => 8, 'resources' => 4, 'storage_bytes' => 1840061]],
     ] as $slug => $expected) {
         $user = User::query()->where('email', $slug.'@example.com')->sole();
         $this->assertSame($expected['name'], $user->first_name);
@@ -51,6 +52,7 @@ it('creates exactly three verified demo profiles with their explicit effective p
         $this->assertSame($expected['expiry'], $assignment->ends_at?->toISOString());
         $this->assertSame('demo', $assignment->source);
         $this->assertSame($slug.'-demo', $assignment->source_reference);
+        $this->assertSame(config("plans.tiers.{$slug}.price_minor"), $assignment->price_minor);
         $entitlements = app(PlanEntitlementService::class)->resolve($user);
         $this->assertSame(['slug' => $slug, 'name' => $expected['name']], $entitlements['plan']);
         $this->assertSame($expected['grant']->value, $entitlements['grant_type']);
@@ -83,7 +85,7 @@ it('gives a new Clarity demo one calendar month in UTC with month-end clamping',
     $this->assertSame(PlanGrantType::RECURRING, $assignment->grant_type);
     $this->assertSame('2027-01-31T23:30:00.000000Z', $assignment->starts_at->toISOString());
     $this->assertSame('2027-02-28T23:30:00.000000Z', $assignment->ends_at->toISOString());
-    $this->assertSame(['projects' => null, 'areas' => null, 'resources' => null], app(PlanEntitlementService::class)->resolve($clarity)['limits']);
+    $this->assertSame(['projects' => null, 'areas' => null, 'resources' => null, 'storage_bytes' => 107374182400], app(PlanEntitlementService::class)->resolve($clarity)['limits']);
 });
 
 it('preserves an expired Clarity demo assignment and edited content when seeding again', function (): void {
@@ -114,7 +116,7 @@ it('preserves an expired Clarity demo assignment and edited content when seeding
     $this->assertSame($publicPaths, Storage::disk('public')->allFiles());
     $entitlements = app(PlanEntitlementService::class)->resolve($clarity);
     $this->assertSame('free', $entitlements['plan']['slug']);
-    $this->assertSame(['projects' => 9, 'areas' => 8, 'resources' => 4], app(PlanQuotaService::class)->usage($clarity));
+    $this->assertSame(['projects' => 9, 'areas' => 8, 'resources' => 4], Arr::except(app(PlanQuotaService::class)->usage($clarity), 'storage_bytes'));
 });
 
 it('leaves the Free demo workspace empty including archive trash and focus settings', function (): void {
@@ -155,7 +157,7 @@ it('populates paid demo Core states and interconnected utilities with the approv
         $this->assertSame(1, $user->{$relation}()->onlyTrashed()->count(), $relation.' Trash count');
         $this->assertSame($total, $user->{$relation}()->withTrashed()->count(), $relation.' total count');
     }
-    $this->assertSame(['projects' => 9, 'areas' => 8, 'resources' => 4], app(PlanQuotaService::class)->usage($user));
+    $this->assertSame(['projects' => 9, 'areas' => 8, 'resources' => 4], Arr::except(app(PlanQuotaService::class)->usage($user), 'storage_bytes'));
     $entries = $user->trashEntries()->get();
     $this->assertCount(3, $entries);
     $this->assertSame(['area', 'project', 'resource'], $entries->pluck('item_type')->sort()->values()->all());
@@ -305,7 +307,7 @@ it('restores each paid demo Core Trash entry with capacity while preserving its 
         $this->assertModelMissing($entry);
     }
 
-    $this->assertSame(['projects' => 10, 'areas' => 9, 'resources' => 5], app(PlanQuotaService::class)->usage($user));
+    $this->assertSame(['projects' => 10, 'areas' => 9, 'resources' => 5], Arr::except(app(PlanQuotaService::class)->usage($user), 'storage_bytes'));
     $this->assertSame(0, $user->trashEntries()->count());
     $this->assertSame(3, $other->trashEntries()->count());
     $this->assertSame($paths, Storage::disk('local')->allFiles());
@@ -346,7 +348,7 @@ it('purges one paid demos Area and Resource files without affecting the other de
     Storage::disk('local')->assertMissing($focusLocalPath);
     Storage::disk('public')->assertExists($clarityPublicPaths);
     Storage::disk('local')->assertExists($clarityLocalPaths);
-    $this->assertSame(['projects' => 9, 'areas' => 8, 'resources' => 4], app(PlanQuotaService::class)->usage($clarity));
+    $this->assertSame(['projects' => 9, 'areas' => 8, 'resources' => 4], Arr::except(app(PlanQuotaService::class)->usage($clarity), 'storage_bytes'));
     $this->assertSame(3, $clarity->trashEntries()->count());
     $this->assertDatabaseEmpty('jobs');
 });

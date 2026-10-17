@@ -20,7 +20,7 @@ it('serializes two Core writes competing for the final available slot', function
     }
     $this->artisan('migrate:fresh', ['--force' => true, '--no-interaction' => true])->assertSuccessful();
     $this->seed(PlanSeeder::class);
-    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 1, 'areas' => 1, 'resources' => 1]]);
+    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 1, 'areas' => 1, 'resources' => 1, 'storage_mb' => null]]);
     $user = User::factory()->create();
     $tag = 'quota-'.Str::random(12);
     $labels = [$tag.'-1', $tag.'-2'];
@@ -79,7 +79,7 @@ it('serializes two Core writes competing for the final available slot', function
         }
     } catch (\App\Support\PlanLimitExceededException $exception) {
         echo json_encode([
-            'status' => 403, 'feature' => $exception->feature->value,
+            'status' => 403, 'feature' => $exception->feature,
             'usage' => $exception->usage, 'limit' => $exception->limit,
         ]).PHP_EOL;
     }

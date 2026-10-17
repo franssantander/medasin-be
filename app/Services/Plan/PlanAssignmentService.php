@@ -2,6 +2,8 @@
 
 namespace App\Services\Plan;
 
+use App\Enum\BillingInterval;
+use App\Enum\Currency;
 use App\Enum\PlanAssignmentStatus;
 use App\Enum\PlanGrantType;
 use App\Models\Plan;
@@ -41,16 +43,18 @@ class PlanAssignmentService
             'source' => ['required', 'string', 'max:64'],
         ])->validate();
         $expiresAt = $expiresAt?->utc()->startOfSecond();
+        // Recurring grants without an explicit expiry last one billing interval of the plan.
+        $derivedExpiry = $expiresAt === null && $grantType === PlanGrantType::RECURRING;
 
         try {
-            return DB::transaction(function () use ($user, $plan, $grantType, $expiresAt, $reference, $source): PlanAssignment {
+            return DB::transaction(function () use ($user, $plan, $grantType, $expiresAt, $derivedExpiry, $reference, $source): PlanAssignment {
                 $user = User::query()->lockForUpdate()->findOrFail($user->getKey());
                 $existing = PlanAssignment::query()->where('source', $source)->where('source_reference', $reference)->first();
 
                 if ($existing) {
-                    $sameExpiry = $expiresAt === null
+                    $sameExpiry = $derivedExpiry || ($expiresAt === null
                         ? $existing->ends_at === null
-                        : $existing->ends_at?->equalTo($expiresAt) === true;
+                        : $existing->ends_at?->equalTo($expiresAt) === true);
                     if ($existing->user_id !== $user->getKey() || $existing->plan_id !== $plan->getKey()
                         || $existing->grant_type !== $grantType || ! $sameExpiry) {
                         throw ValidationException::withMessages(['reference' => 'This reference already identifies a different plan grant.']);
@@ -60,8 +64,13 @@ class PlanAssignmentService
                 }
 
                 $plan = Plan::query()->whereKey($plan->getKey())->where('is_active', true)->first();
-                if (! $plan || ! array_key_exists($plan->slug, config('plans.limits'))) {
+                if (! $plan || ! array_key_exists($plan->slug, config('plans.tiers'))) {
                     throw ValidationException::withMessages(['plan' => 'Choose an available product plan.']);
+                }
+
+                $startsAt = CarbonImmutable::now('UTC')->startOfSecond();
+                if ($derivedExpiry) {
+                    $expiresAt = $plan->billing_interval?->endFrom($startsAt);
                 }
 
                 $validGrant = match ($grantType) {
@@ -80,10 +89,11 @@ class PlanAssignmentService
                     'plan_id' => $plan->getKey(),
                     'status' => PlanAssignmentStatus::ACTIVE,
                     'grant_type' => $grantType,
-                    'starts_at' => now()->startOfSecond(),
+                    'starts_at' => $startsAt,
                     'ends_at' => $expiresAt,
                     'source' => $source,
                     'source_reference' => $reference,
+                    ...$this->priceSnapshot($plan),
                 ]);
                 $this->cache->invalidateUser($user);
 
@@ -127,9 +137,10 @@ class PlanAssignmentService
                         'status' => PlanAssignmentStatus::ACTIVE,
                         'grant_type' => PlanGrantType::RECURRING,
                         'starts_at' => $startsAt,
-                        'ends_at' => $startsAt->addMonthNoOverflow(),
+                        'ends_at' => ($assignment->plan->billing_interval ?? BillingInterval::MONTH)->endFrom($startsAt),
                         'source' => self::LIFETIME_CONVERSION_SOURCE,
                         'source_reference' => $user->uuid,
+                        ...$this->priceSnapshot($assignment->plan),
                     ]);
                     $this->cache->invalidateUser($user);
 
@@ -174,5 +185,19 @@ class PlanAssignmentService
         });
 
         return $created;
+    }
+
+    /**
+     * What the account is charged for this grant, kept even if the catalog price changes later.
+     *
+     * @return array{price_minor: int, currency: Currency, billing_interval: ?BillingInterval}
+     */
+    private function priceSnapshot(Plan $plan): array
+    {
+        return [
+            'price_minor' => $plan->price_minor,
+            'currency' => $plan->currency,
+            'billing_interval' => $plan->billing_interval,
+        ];
     }
 }

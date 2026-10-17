@@ -84,11 +84,13 @@ class AuthService
     }
 
     /**
-     * @return array{0: User, 1: Cookie, 2: Cookie}
+     * Verifies the email and, unless $issueTokens is false, signs the user in.
+     *
+     * @return array{0: User, 1: ?Cookie, 2: ?Cookie}
      */
-    public function verifyEmail(string $email, #[\SensitiveParameter] string $code, bool $rememberMe = true): array
+    public function verifyEmail(string $email, #[\SensitiveParameter] string $code, bool $rememberMe = true, bool $issueTokens = true): array
     {
-        $result = DB::transaction(function () use ($email, $code, $rememberMe): ?array {
+        $result = DB::transaction(function () use ($email, $code, $rememberMe, $issueTokens): ?array {
             $user = User::query()->where('email', $email)->lockForUpdate()->first();
 
             if (! $user || $user->hasVerifiedEmail() || ! $this->otpService->consume($user, AuthOtpPurpose::EMAIL_VERIFICATION, $code)) {
@@ -98,7 +100,7 @@ class AuthService
             $user->markEmailAsVerified();
             event(new Verified($user));
 
-            return [$user, ...$this->tokenService->issue($user, $rememberMe)];
+            return $issueTokens ? [$user, ...$this->tokenService->issue($user, $rememberMe)] : [$user, null, null];
         });
 
         if (! $result) {

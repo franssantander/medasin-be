@@ -13,6 +13,7 @@ use App\Services\ApiReadCacheService;
 use App\Services\Plan\PlanQuotaService;
 use App\Services\Profile\FileCleanupService;
 use App\Services\Search\SearchText;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
@@ -82,6 +83,7 @@ class ResourceService
     {
         return $this->quota->transaction($user, function (User $user) use ($data): array {
             $this->quota->assertCanIncrease($user, CoreFeature::RESOURCES);
+            $this->quota->assertCanStore($user, $this->totalBytes($data->files));
             $resource = $user->resources()->create([
                 'title' => $data->title,
                 'icon' => $data->icon,
@@ -193,6 +195,7 @@ class ResourceService
         return DB::transaction(function () use ($resource, $links, $files): array {
             $user = User::query()->lockForUpdate()->findOrFail($resource->user_id);
             $resource = $user->resources()->whereKey($resource->getKey())->firstOrFail();
+            $this->quota->assertCanStore($user, $this->totalBytes($files));
 
             foreach ($links as $url) {
                 $resource->attachments()->create(['kind' => 'link', 'url' => $url]);
@@ -265,5 +268,11 @@ class ResourceService
             'projects' => $resource->projects->map->only(['uuid', 'name'])->all(),
             'areas' => $resource->areas->map->only(['uuid', 'name'])->all(),
         ];
+    }
+
+    /** @param  array<int, UploadedFile>  $files */
+    private function totalBytes(array $files): int
+    {
+        return array_sum(array_map(fn (UploadedFile $file): int => (int) $file->getSize(), $files));
     }
 }

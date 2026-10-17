@@ -18,7 +18,8 @@ return new class extends Migration
             $table->string('slug')->unique();
             $table->text('description');
             $table->string('currency', 3);
-            $table->unsignedInteger('price')->default(0);
+            $table->string('billing_interval', 10)->nullable();
+            $table->unsignedInteger('price_minor')->default(0);
             $table->boolean('is_active')->default(true);
             $table->jsonb('limits');
             $table->softDeletes();
@@ -26,7 +27,7 @@ return new class extends Migration
 
             $table->index(['name', 'slug'], 'plans_name');
             $table->index(['description', 'currency'], 'plans_currency');
-            $table->index(['price', 'is_active'], 'plans_active');
+            $table->index(['price_minor', 'is_active'], 'plans_active');
         });
     }
 

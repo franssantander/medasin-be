@@ -76,7 +76,7 @@ it('allows the final available item and returns 403 for the next item', function
 it('does not persist a nested area project or board when either allowance is exhausted', function (string $feature): void {
     $this->seed(PlanSeeder::class);
     Plan::where('slug', 'free')->sole()->updateOrFail([
-        'limits' => ['projects' => $feature === 'projects' ? 0 : 10, 'areas' => $feature === 'areas' ? 0 : 5, 'resources' => 100],
+        'limits' => ['projects' => $feature === 'projects' ? 0 : 10, 'areas' => $feature === 'areas' ? 0 : 5, 'resources' => 100, 'storage_mb' => null],
     ]);
     Passport::actingAs(User::factory()->create());
 
@@ -90,7 +90,7 @@ it('does not persist a nested area project or board when either allowance is exh
 
 it('checks the area allowance when project reassignment creates an area', function (): void {
     $this->seed(PlanSeeder::class);
-    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 100]]);
+    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 100, 'storage_mb' => null]]);
     $user = User::factory()->create();
     $project = $user->projects()->create(['name' => 'Existing project']);
     Passport::actingAs($user);
@@ -104,7 +104,7 @@ it('checks the area allowance when project reassignment creates an area', functi
 
 it('allows existing area associations when the account is over quota', function (string $input): void {
     $this->seed(PlanSeeder::class);
-    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 100]]);
+    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 100, 'storage_mb' => null]]);
     $user = User::factory()->create();
     $project = $user->projects()->create(['name' => 'Existing project']);
     $area = $user->areas()->create(['name' => 'Existing area']);
@@ -119,7 +119,7 @@ it('allows existing area associations when the account is over quota', function 
 
 it('reuses an existing area when creating a project at the area limit', function (): void {
     $this->seed(PlanSeeder::class);
-    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 10, 'areas' => 1, 'resources' => 100]]);
+    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 10, 'areas' => 1, 'resources' => 100, 'storage_mb' => null]]);
     $user = User::factory()->create();
     $area = $user->areas()->create(['name' => 'Existing area']);
     Passport::actingAs($user);
@@ -134,7 +134,7 @@ it('counts archived items toward the corresponding cap', function (
     string $feature, string $archiveRoute, string $storeRoute, string $field,
 ): void {
     $this->seed(PlanSeeder::class);
-    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 1, 'areas' => 1, 'resources' => 1]]);
+    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 1, 'areas' => 1, 'resources' => 1, 'storage_mb' => null]]);
     $user = User::factory()->create();
     createQuotaItems($user, $feature, 1);
     $item = $user->{$feature}()->sole();
@@ -154,7 +154,7 @@ it('counts archived items toward the corresponding cap', function (
 
 it('returns 403 for Core recovery at the cap and restores after capacity is freed', function (string $feature, string $prefix, string $field): void {
     $this->seed(PlanSeeder::class);
-    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 1, 'areas' => 1, 'resources' => 1]]);
+    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 1, 'areas' => 1, 'resources' => 1, 'storage_mb' => null]]);
     $user = User::factory()->create();
     createQuotaItems($user, $feature, 1);
     $item = $user->{$feature}()->sole();
@@ -207,7 +207,7 @@ it('returns 403 for Core recovery with a zero limit or existing over-cap usage',
     string $feature, string $prefix, int $limit, int $usage,
 ): void {
     $this->seed(PlanSeeder::class);
-    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => $limit, 'areas' => $limit, 'resources' => $limit]]);
+    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => $limit, 'areas' => $limit, 'resources' => $limit, 'storage_mb' => null]]);
     $user = User::factory()->create();
     createQuotaItems($user, $feature, 1, [$feature === 'resources' ? 'title' : 'name' => 'Trashed item']);
     $item = $user->{$feature}()->sole();
@@ -238,7 +238,7 @@ it('returns 403 for Core recovery with a zero limit or existing over-cap usage',
 
 it('rechecks the final recovery slot after an earlier listing allowed two entries', function (): void {
     $this->seed(PlanSeeder::class);
-    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 1]]);
+    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 1, 'storage_mb' => null]]);
     $user = User::factory()->create();
     $first = $user->resources()->create(['title' => 'First reference']);
     $second = $user->resources()->create(['title' => 'Second reference']);
@@ -268,7 +268,7 @@ it('requires capacity for archived Core recovery and preserves the archive state
     string $feature, string $prefix, string $field,
 ): void {
     $this->seed(PlanSeeder::class);
-    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 1, 'areas' => 1, 'resources' => 1]]);
+    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 1, 'areas' => 1, 'resources' => 1, 'storage_mb' => null]]);
     $user = User::factory()->create();
     createQuotaItems($user, $feature, 1, ['archived_at' => '2026-09-01 12:00:00']);
     $item = $user->{$feature}()->sole();
@@ -303,6 +303,7 @@ it('restores only the selected Core feature when other features are over quota',
         'projects' => $feature === 'projects' ? 1 : 0,
         'areas' => $feature === 'areas' ? 1 : 0,
         'resources' => $feature === 'resources' ? 1 : 0,
+        'storage_mb' => null,
     ]]);
     $user = User::factory()->create();
     $area = $user->areas()->create(['name' => 'Related area']);
@@ -338,7 +339,7 @@ it('restores only the selected Core feature when other features are over quota',
 
 it('keeps parent availability ahead of a Core recovery quota denial', function (): void {
     $this->seed(PlanSeeder::class);
-    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 1, 'resources' => 0]]);
+    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 1, 'resources' => 0, 'storage_mb' => null]]);
     $user = User::factory()->create();
     $area = $user->areas()->create(['name' => 'Parent area']);
     $project = $user->projects()->create(['name' => 'Child project']);
@@ -364,7 +365,7 @@ it('keeps parent availability ahead of a Core recovery quota denial', function (
 it('returns 410 and purges an expired Core entry before considering its quota', function (): void {
     $this->travelTo('2026-10-05T08:00:00Z');
     $this->seed(PlanSeeder::class);
-    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 0]]);
+    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 0, 'storage_mb' => null]]);
     $user = User::factory()->create();
     $resource = $user->resources()->create(['title' => 'Expired reference']);
     Passport::actingAs($user);
@@ -383,7 +384,7 @@ it('returns 410 and purges an expired Core entry before considering its quota', 
 
 it('returns 404 for another owners Core recovery before evaluating quota', function (): void {
     $this->seed(PlanSeeder::class);
-    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 0]]);
+    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 0, 'storage_mb' => null]]);
     $owner = User::factory()->create();
     $resource = $owner->resources()->create(['title' => 'Private reference']);
     Passport::actingAs($owner);
@@ -405,7 +406,7 @@ it('allows Core recovery with effective unlimited entitlements', function (
     $user = User::factory()->create();
     if ($mode === 'disabled') {
         config(['plans.enforcement_enabled' => false]);
-        Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 0]]);
+        Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 0, 'storage_mb' => null]]);
     } else {
         PlanAssignment::factory()->for($user)->for(Plan::where('slug', 'clarity')->sole())->create();
     }
@@ -435,7 +436,7 @@ it('allows Core recovery with effective unlimited entitlements', function (
 
 it('restores grouped boards and notes without consuming Core quota', function (): void {
     $this->seed(PlanSeeder::class);
-    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 0]]);
+    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 0, 'storage_mb' => null]]);
     $user = User::factory()->create();
     createQuotaItems($user, 'projects', 1);
     createQuotaItems($user, 'areas', 1);
@@ -473,7 +474,7 @@ it('restores grouped boards and notes without consuming Core quota', function ()
 it('restores attachment files while the parent resource is over quota', function (): void {
     Storage::fake('local');
     $this->seed(PlanSeeder::class);
-    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 0]]);
+    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 0, 'storage_mb' => null]]);
     $user = User::factory()->create();
     $resource = $user->resources()->create(['title' => 'Existing reference']);
     Storage::disk('local')->put('resources/recoverable.txt', 'Retained attachment');
@@ -497,7 +498,7 @@ it('restores attachment files while the parent resource is over quota', function
 
 it('keeps existing records readable editable and recoverable after downgrade', function (): void {
     $this->seed(PlanSeeder::class);
-    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 0]]);
+    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 0, 'storage_mb' => null]]);
     $user = User::factory()->create();
     PlanAssignment::factory()->for($user)->for(Plan::where('slug', 'focus')->sole())->create();
     $project = $user->projects()->create(['name' => 'Saved work']);
@@ -569,7 +570,7 @@ it('requires Free capacity for Core recovery under a legacy lifetime grant', fun
     string $feature, string $prefix,
 ): void {
     $this->seed(PlanSeeder::class);
-    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 0]]);
+    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 0, 'storage_mb' => null]]);
     $user = User::factory()->create();
     PlanAssignment::factory()->for($user)->for(Plan::where('slug', 'clarity')->sole())->create([
         'grant_type' => PlanGrantType::LIFETIME, 'ends_at' => null,
@@ -595,7 +596,7 @@ it('requires Free capacity for Core recovery under a legacy lifetime grant', fun
 it('denies resource creation before storing attachments tags or associations', function (): void {
     Storage::fake('local');
     $this->seed(PlanSeeder::class);
-    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 10, 'areas' => 5, 'resources' => 0]]);
+    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 10, 'areas' => 5, 'resources' => 0, 'storage_mb' => null]]);
     Passport::actingAs(User::factory()->create());
 
     $this->postJson(route('resource.store'), [
@@ -612,7 +613,7 @@ it('denies resource creation before storing attachments tags or associations', f
 it('denies area creation before storing its background image', function (): void {
     Storage::fake('public');
     $this->seed(PlanSeeder::class);
-    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 10, 'areas' => 0, 'resources' => 100]]);
+    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 10, 'areas' => 0, 'resources' => 100, 'storage_mb' => null]]);
     Passport::actingAs(User::factory()->create());
 
     $this->postJson(route('area.store'), [
@@ -626,7 +627,7 @@ it('denies area creation before storing its background image', function (): void
 it('allows attachment growth and resource linking while over Core quotas', function (): void {
     Storage::fake('local');
     $this->seed(PlanSeeder::class);
-    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 0]]);
+    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 0, 'storage_mb' => null]]);
     $user = User::factory()->create();
     $resource = $user->resources()->create(['title' => 'Saved resource']);
     $project = $user->projects()->create(['name' => 'Saved project']);
@@ -662,7 +663,7 @@ it('isolates quota usage and ignores forged owner or entitlement fields', functi
 
 it('fails closed for malformed persisted Core definitions', function (mixed $limit): void {
     $this->seed(PlanSeeder::class);
-    $limits = ['areas' => 5, 'resources' => 100];
+    $limits = ['areas' => 5, 'resources' => 100, 'storage_mb' => null];
     if ($limit !== 'missing') {
         $limits['projects'] = $limit;
     }
@@ -680,7 +681,7 @@ it('allows Core creation beyond the cap when enforcement is disabled', function 
 ): void {
     config(['plans.enforcement_enabled' => false]);
     $this->seed(PlanSeeder::class);
-    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 0]]);
+    Plan::where('slug', 'free')->sole()->updateOrFail(['limits' => ['projects' => 0, 'areas' => 0, 'resources' => 0, 'storage_mb' => null]]);
     $user = User::factory()->create();
     Passport::actingAs($user);
 
@@ -709,10 +710,10 @@ it('preserves security and input validation while enforcement is disabled', func
 it('keeps every utility unrestricted even when Core and legacy limits are exhausted', function (string $slug): void {
     $this->seed(PlanSeeder::class);
     $plan = Plan::where('slug', $slug)->sole();
-    $plan->updateOrFail(['limits' => array_fill_keys([
+    $plan->updateOrFail(['limits' => [...array_fill_keys([
         'projects', 'areas', 'resources', 'kanban_boards', 'kanban_tasks',
         'reminders', 'notes', 'journal_entries', 'pomodoro', 'attachments_mb',
-    ], 0)]);
+    ], 0), 'storage_mb' => null]]);
     $user = User::factory()->create();
     if ($slug !== 'free') {
         PlanAssignment::factory()->for($user)->for($plan)->create();

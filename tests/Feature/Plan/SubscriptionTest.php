@@ -21,8 +21,8 @@ it('resolves approved Free limits for an account without catalog or assignment r
             'grant_type' => 'free',
             'expires_at' => null,
             'enforcement_enabled' => true,
-            'limits' => ['projects' => 10, 'areas' => 5, 'resources' => 100],
-            'usage' => ['projects' => 0, 'areas' => 0, 'resources' => 0],
+            'limits' => ['projects' => 10, 'areas' => 5, 'resources' => 100, 'storage_bytes' => 1073741824],
+            'usage' => ['projects' => 0, 'areas' => 0, 'resources' => 0, 'storage_bytes' => 0],
         ],
         'status' => 200,
         'message' => 'Request was successful.',
@@ -51,9 +51,9 @@ it('resolves the assigned tier without exposing assignment history', function (
         ->assertJsonMissingPath('data.source_reference')
         ->assertJsonMissingPath('data.assignments');
 })->with([
-    'Free' => ['free', ['projects' => 10, 'areas' => 5, 'resources' => 100]],
-    'Focus' => ['focus', ['projects' => 50, 'areas' => 20, 'resources' => 1000]],
-    'Clarity' => ['clarity', ['projects' => null, 'areas' => null, 'resources' => null]],
+    'Free' => ['free', ['projects' => 10, 'areas' => 5, 'resources' => 100, 'storage_bytes' => 1073741824]],
+    'Focus' => ['focus', ['projects' => 50, 'areas' => 20, 'resources' => 1000, 'storage_bytes' => 10737418240]],
+    'Clarity' => ['clarity', ['projects' => null, 'areas' => null, 'resources' => null, 'storage_bytes' => 107374182400]],
 ]);
 
 it('falls back to Free for an ineligible paid assignment', function (string $slug, string $state): void {
@@ -111,7 +111,7 @@ it('ignores legacy lifetime access while preserving readable history', function 
         ->assertJsonPath('data.plan.slug', 'free')
         ->assertJsonPath('data.grant_type', 'free')
         ->assertJsonPath('data.expires_at', null)
-        ->assertJsonPath('data.limits', ['projects' => 10, 'areas' => 5, 'resources' => 100]);
+        ->assertJsonPath('data.limits', ['projects' => 10, 'areas' => 5, 'resources' => 100, 'storage_bytes' => 1073741824]);
 
     expect($assignment->fresh()->grant_type)->toBe(PlanGrantType::LIFETIME)
         ->and($assignment->fresh()->getRawOriginal())->toBe($before);
@@ -131,14 +131,14 @@ it('returns recurring unlimited Clarity only until its paid period expires', fun
         ->assertJsonPath('data.plan.slug', 'clarity')
         ->assertJsonPath('data.grant_type', 'recurring')
         ->assertJsonPath('data.expires_at', '2026-11-11T00:00:00.000000Z')
-        ->assertJsonPath('data.limits', ['projects' => null, 'areas' => null, 'resources' => null]);
+        ->assertJsonPath('data.limits', ['projects' => null, 'areas' => null, 'resources' => null, 'storage_bytes' => 107374182400]);
 
     $this->travelTo('2026-11-11T00:00:00Z');
     $this->getJson(route('subscription.show'))->assertOk()
         ->assertJsonPath('data.plan.slug', 'free')
         ->assertJsonPath('data.grant_type', 'free')
         ->assertJsonPath('data.expires_at', null)
-        ->assertJsonPath('data.limits', ['projects' => 10, 'areas' => 5, 'resources' => 100]);
+        ->assertJsonPath('data.limits', ['projects' => 10, 'areas' => 5, 'resources' => 100, 'storage_bytes' => 1073741824]);
 
     $this->assertDatabaseHas('plan_assignments', ['id' => $assignment->id, 'status' => 'active', 'ends_at' => '2026-11-11 00:00:00']);
 });
@@ -166,7 +166,7 @@ it('returns unlimited effective limits with enforcement disabled without rewriti
     $this->getJson(route('subscription.show'))->assertOk()
         ->assertJsonPath('data.plan.slug', 'focus')
         ->assertJsonPath('data.enforcement_enabled', false)
-        ->assertJsonPath('data.limits', ['projects' => null, 'areas' => null, 'resources' => null]);
+        ->assertJsonPath('data.limits', ['projects' => null, 'areas' => null, 'resources' => null, 'storage_bytes' => null]);
 
     expect($assignment->fresh()->getRawOriginal())->toBe($before);
 });
