@@ -7,7 +7,7 @@ use App\Models\User;
 use App\Services\ApiReadCacheInvalidator;
 use App\Services\Auth\TokenService;
 use Carbon\CarbonInterval;
-use Database\Seeders\PassportClientSeeder;
+use Database\Seeders\CleanStateSeeder;
 use Illuminate\Cache\Events\CacheFailedOver;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Relations\Relation;
@@ -66,7 +66,7 @@ class AppServiceProvider extends ServiceProvider
             }
 
             Artisan::call('db:seed', array_filter([
-                '--class' => PassportClientSeeder::class,
+                '--class' => CleanStateSeeder::class,
                 '--database' => $event->database,
                 '--force' => true,
             ]));
