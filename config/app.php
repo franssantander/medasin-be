@@ -56,6 +56,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Frontend URL and Trusted Proxies
+    |--------------------------------------------------------------------------
+    |
+    | The frontend origin is the only browser origin allowed to send
+    | cookie-authenticated writes and CORS requests. Trusted proxies are the
+    | addresses whose X-Forwarded-* headers are believed; the default covers
+    | loopback and private networks (Docker), never the public internet.
+    |
+    */
+
+    'frontend_url' => env('FRONTEND_URL'),
+
+    'trusted_proxies' => env('TRUSTED_PROXIES', '127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

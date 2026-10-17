@@ -2,6 +2,8 @@
 
 namespace App\Http\Requests\Resource;
 
+use App\Rules\MaxBytes;
+use App\Rules\SafeAttachment;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -30,13 +32,13 @@ class StoreResourceRequest extends FormRequest
             'title' => ['required', 'string', 'max:255'],
             'icon' => ['nullable', 'string', 'max:50'],
             'background' => ['nullable', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
-            'content' => ['nullable', 'array'],
+            'content' => ['nullable', 'array', new MaxBytes],
             'content.type' => ['required_with:content', 'in:doc'],
             'content.content' => ['sometimes', 'array'],
             'links' => ['sometimes', 'array', 'max:100'],
             'links.*' => ['required', 'url:http,https', 'max:4096'],
             'files' => ['sometimes', 'array', 'max:10'],
-            'files.*' => ['required', 'file', 'max:20480'],
+            'files.*' => ['required', 'file', 'max:20480', new SafeAttachment],
             'tag_uuids' => ['sometimes', 'array', 'max:100'],
             'tag_uuids.*' => ['required', 'uuid', 'distinct', $owned('resource_tags')],
             'tag_names' => ['sometimes', 'array', 'max:100'],

@@ -18,6 +18,8 @@ use Symfony\Component\HttpFoundation\Cookie;
 
 class AuthService
 {
+    private ?string $timingGuardHash = null;
+
     public function __construct(
         protected AuthOtpService $otpService,
         protected TokenService $tokenService,
@@ -64,8 +66,10 @@ class AuthService
     {
         return DB::transaction(function () use ($username, $password, $rememberMe): array {
             $user = User::query()->where('username', $username)->lockForUpdate()->first();
+            // Hash even when the username is unknown so response time does not reveal which usernames exist.
+            $passwordMatches = Hash::check($password, $user?->password ?? $this->timingGuardHash());
 
-            if (! $user || ! Hash::check($password, $user->password)) {
+            if (! $user || ! $passwordMatches) {
                 throw ValidationException::withMessages([
                     'username' => ['The provided credentials are incorrect.'],
                 ]);
@@ -197,6 +201,11 @@ class AuthService
                 'reset_token' => ['The password reset token is invalid or has expired.'],
             ]);
         }
+    }
+
+    protected function timingGuardHash(): string
+    {
+        return $this->timingGuardHash ??= Hash::make(Str::random(32));
     }
 
     protected function invalidOtp(): ValidationException

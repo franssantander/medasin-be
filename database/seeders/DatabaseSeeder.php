@@ -11,9 +11,9 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        $this->call([
-            PassportClientSeeder::class,
-            DemoUserSeeder::class,
-        ]);
+        $this->call(PassportClientSeeder::class);
+
+        // Demo accounts have published passwords, so production only gets the plan catalog.
+        $this->call(app()->isProduction() ? PlanSeeder::class : DemoUserSeeder::class);
     }
 }

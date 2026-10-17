@@ -80,7 +80,9 @@ class ApiResponder
             default:
                 if ($exception) {
                     $status = Response::HTTP_INTERNAL_SERVER_ERROR;
-                    $message ??= $exception->getMessage() ?: 'An unexpected error occurred. Please try again later.';
+                    // Unexpected exception messages can name hosts, paths, or data, so only debug builds echo them.
+                    $message ??= (self::exposesDebugDetails() ? $exception->getMessage() : null)
+                        ?: 'An unexpected error occurred. Please try again later.';
                 }
         }
 
@@ -111,7 +113,7 @@ class ApiResponder
             ];
         }
 
-        if ($exception && config('app.debug') && ! App::environment('production')) {
+        if ($exception && self::exposesDebugDetails()) {
             $payload['debug'] = [
                 'exception' => get_class($exception),
                 'message' => $exception->getMessage(),
@@ -129,5 +131,10 @@ class ApiResponder
             $status,
             $exception instanceof HttpException ? $exception->getHeaders() : [],
         );
+    }
+
+    private static function exposesDebugDetails(): bool
+    {
+        return config('app.debug') && ! App::environment('production');
     }
 }

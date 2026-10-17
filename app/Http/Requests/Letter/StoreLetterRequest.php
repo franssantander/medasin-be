@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Letter;
 
+use App\Rules\MaxBytes;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
@@ -25,7 +26,7 @@ class StoreLetterRequest extends FormRequest
         return [
             'title' => ['required', 'string', 'max:120'],
             'subtitle' => ['sometimes', 'nullable', 'string', 'max:240'],
-            'content' => ['required', 'string', 'json'],
+            'content' => ['required', 'string', 'json', new MaxBytes],
         ];
     }
 

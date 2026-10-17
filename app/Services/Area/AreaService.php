@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\ApiReadCacheService;
 use App\Services\Plan\PlanQuotaService;
 use App\Services\Profile\FileCleanupService;
+use App\Support\ImageMetadataStripper;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -20,6 +21,7 @@ class AreaService
     public function __construct(
         private readonly PlanQuotaService $quota,
         private readonly FileCleanupService $fileCleanup,
+        private readonly ImageMetadataStripper $metadata,
     ) {}
 
     public function create(User $user, AreaData $data, ?UploadedFile $image = null): Area
@@ -29,6 +31,7 @@ class AreaService
             $attributes = $data->toArray();
 
             if ($image) {
+                $this->metadata->strip($image->getRealPath());
                 $filename = $image->hashName();
                 $path = "areas/backgrounds/{$filename}";
                 DB::afterRollBack(function () use ($path): void {

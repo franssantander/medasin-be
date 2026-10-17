@@ -197,9 +197,9 @@ class AuthAccessTest extends AuthTestCase
     public static function rememberMePreferences(): array
     {
         return [
-            'legacy default' => [[], true, 604800, 2592000],
+            'legacy default' => [[], true, 3600, 2592000],
             'browser session' => [['remember_me' => false], false, 0, 0],
-            'remembered' => [['remember_me' => true], true, 604800, 2592000],
+            'remembered' => [['remember_me' => true], true, 3600, 2592000],
         ];
     }
 
@@ -263,7 +263,7 @@ class AuthAccessTest extends AuthTestCase
     {
         return [
             'session remains session' => [false, 0, 0],
-            'remembered remains remembered' => [true, 604800, 2592000],
+            'remembered remains remembered' => [true, 3600, 2592000],
         ];
     }
 

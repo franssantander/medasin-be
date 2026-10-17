@@ -8,12 +8,14 @@ use App\Services\Auth\AuthOtpService;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Laravel\Passport\Contracts\OAuthenticatable;
 use Laravel\Passport\HasApiTokens;
 
@@ -30,6 +32,16 @@ class User extends Authenticatable implements MustVerifyEmail, OAuthenticatable
             : null;
     }
 
+    /**
+     * Emails are stored trimmed and lowercase so one address can only ever belong to one account.
+     */
+    protected function email(): Attribute
+    {
+        return Attribute::make(
+            set: fn (?string $value): ?string => $value === null ? null : Str::lower(trim($value)),
+        );
+    }
+
     public function sendEmailVerificationNotification(): void
     {
         app(AuthOtpService::class)->send($this, AuthOtpPurpose::EMAIL_VERIFICATION);
@@ -44,6 +56,7 @@ class User extends Authenticatable implements MustVerifyEmail, OAuthenticatable
     {
         return [
             'email_verified_at' => 'datetime',
+            'deletion_scheduled_at' => 'datetime',
             'password' => 'hashed',
         ];
     }

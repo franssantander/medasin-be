@@ -1,7 +1,9 @@
 <?php
 
+use App\Http\Middleware\AddSecurityHeaders;
 use App\Http\Middleware\AuthenticateFromCookie;
 use App\Http\Middleware\EnsureApiEmailIsVerified;
+use App\Http\Middleware\RejectCrossOriginCookieWrites;
 use App\Support\ApiResponder;
 use Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests;
 use Illuminate\Foundation\Application;
@@ -23,13 +25,15 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->api(prepend: [
+            RejectCrossOriginCookieWrites::class,
             AuthenticateFromCookie::class,
+        ], append: [
+            AddSecurityHeaders::class,
         ]);
         $middleware->alias([
             'verified.api' => EnsureApiEmailIsVerified::class,
         ]);
         $middleware->appendToPriorityList(AuthenticatesRequests::class, EnsureApiEmailIsVerified::class);
-        $middleware->trustProxies(at: '*');
         $middleware->trimStrings(except: [
             'pages.*.cover.hero_image_caption',
             // Letter page blocks hold rich-text runs whose edge spaces separate styled words.

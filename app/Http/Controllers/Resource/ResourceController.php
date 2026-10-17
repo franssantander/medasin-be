@@ -111,6 +111,7 @@ class ResourceController extends Controller
         return Storage::disk('local')->download($file->path, $file->original_name, [
             'Content-Type' => $file->mime_type,
             'X-Content-Type-Options' => 'nosniff',
+            'Content-Security-Policy' => "default-src 'none'; sandbox",
             'Cache-Control' => 'private, no-store',
         ]);
     }

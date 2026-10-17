@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Journal;
 
+use App\Rules\MaxBytes;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -17,7 +18,7 @@ class StoreJournalEntryRequest extends FormRequest
     {
         return [
             'title' => ['required', 'string', 'max:120'],
-            'content' => ['required', 'string', 'json'],
+            'content' => ['required', 'string', 'json', new MaxBytes],
             'resource_uuids' => ['sometimes', 'array', 'max:100'],
             'resource_uuids.*' => [
                 'required',

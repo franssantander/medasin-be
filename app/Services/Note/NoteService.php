@@ -9,6 +9,7 @@ use App\Models\NoteMedia;
 use App\Models\User;
 use App\Services\Plan\PlanQuotaService;
 use App\Services\Profile\FileCleanupService;
+use App\Support\ImageMetadataStripper;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Arr;
@@ -24,6 +25,7 @@ class NoteService
     public function __construct(
         private readonly FileCleanupService $fileCleanup,
         private readonly PlanQuotaService $quota,
+        private readonly ImageMetadataStripper $metadata,
     ) {}
 
     public function tree(HasMany $notes): array
@@ -100,6 +102,7 @@ class NoteService
                 $note = $user->standaloneNotes()->whereKey($note->getKey())->firstOrFail();
                 $directory = "notes/{$user->uuid}/{$note->uuid}";
             }
+            $this->metadata->strip($file->getRealPath());
             $this->quota->assertCanStore($user, (int) $file->getSize());
 
             $filename = $file->hashName();

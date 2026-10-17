@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Services\Area\AreaService;
 use App\Services\Profile\FileCleanupService;
 use App\Services\Trash\TrashService;
+use App\Support\ImageMetadataStripper;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -28,6 +29,7 @@ class AreaController extends Controller
         private readonly AreaService $areaService,
         private readonly TrashService $trashService,
         private readonly FileCleanupService $fileCleanup,
+        private readonly ImageMetadataStripper $metadata,
     ) {}
 
     /**
@@ -94,6 +96,7 @@ class AreaController extends Controller
             if ($request->hasFile('background_image')) {
                 $previousImage = $area->background_image;
                 $image = $request->file('background_image');
+                $this->metadata->strip($image->getRealPath());
                 $filename = $image->hashName();
                 $path = "areas/backgrounds/{$filename}";
                 DB::afterRollBack(function () use ($path): void {

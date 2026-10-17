@@ -40,7 +40,7 @@ class StoreAreaRequest extends FormRequest
             'icon' => ['nullable', 'string', 'max:50'],
             'background' => ['nullable', 'string', 'max:32'],
             'background_image' => ['nullable', File::image()->max('5mb')],
-            'description' => ['nullable', 'string'],
+            'description' => ['nullable', 'string', 'max:10000'],
         ];
     }
 

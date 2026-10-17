@@ -6,6 +6,7 @@ use Tests\TestCase;
 pest()->extend(AuthTestCase::class)->in(
     'Feature/Auth/AuthenticationWorkflowTest.php',
     'Feature/Auth/GoogleAuthenticationTest.php',
+    'Feature/Auth/SecurityHardeningTest.php',
 );
 
 pest()->extend(TestCase::class)->in(

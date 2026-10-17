@@ -6,6 +6,7 @@ enum AuthOtpPurpose: string
 {
     case EMAIL_VERIFICATION = 'email_verification';
     case PASSWORD_RESET = 'password_reset';
+    case ACCOUNT_DELETION = 'account_deletion';
 
     public function expiresInMinutes(): int
     {

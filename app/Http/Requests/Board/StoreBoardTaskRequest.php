@@ -32,7 +32,7 @@ class StoreBoardTaskRequest extends FormRequest
 
         return [
             'title' => [$required, 'string', 'max:120'],
-            'description' => ['sometimes', 'nullable', 'string'],
+            'description' => ['sometimes', 'nullable', 'string', 'max:10000'],
             'priority' => ['sometimes', Rule::enum(BoardTaskPriority::class)],
             'stage' => ['sometimes', Rule::enum(BoardStageKey::class)],
             'position' => ['sometimes', 'integer', 'min:0'],

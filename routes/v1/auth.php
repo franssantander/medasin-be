@@ -9,13 +9,16 @@ Route::prefix('auth')
     ->name('auth.')
     ->controller(AuthController::class)
     ->group(function (): void {
-        Route::post('register', 'register')->name('register');
-        Route::post('verify-email', 'verifyEmail')->name('verify-email');
-        Route::post('resend-verification', 'resendVerification')->name('resend-verification');
-        Route::post('forgot-password', 'forgotPassword')->name('forgot-password');
-        Route::post('verify-password-reset', 'verifyPasswordReset')->name('verify-password-reset');
-        Route::post('reset-password', 'resetPassword')->name('reset-password');
-        Route::post('login', 'login')->name('login');
+        // Credential and code endpoints are also limited per targeted account, not only per IP.
+        Route::middleware('throttle:auth')->group(function (): void {
+            Route::post('register', 'register')->name('register');
+            Route::post('verify-email', 'verifyEmail')->name('verify-email');
+            Route::post('resend-verification', 'resendVerification')->name('resend-verification');
+            Route::post('forgot-password', 'forgotPassword')->name('forgot-password');
+            Route::post('verify-password-reset', 'verifyPasswordReset')->name('verify-password-reset');
+            Route::post('reset-password', 'resetPassword')->name('reset-password');
+            Route::post('login', 'login')->name('login');
+        });
         Route::post('refresh', 'refresh')->name('refresh');
 
         Route::middleware('auth:api')->group(function (): void {

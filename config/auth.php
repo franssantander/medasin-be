@@ -122,6 +122,19 @@ return [
     'otp' => [
         'email_verification' => ['expire' => 60],
         'password_reset' => ['expire' => 10],
+        'account_deletion' => ['expire' => 10],
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Account Deletion Grace Period
+    |--------------------------------------------------------------------------
+    |
+    | Deleting an account signs it out everywhere and schedules the permanent
+    | purge this many days later. Signing in before then cancels the deletion.
+    |
+    */
+
+    'account_deletion_grace_days' => (int) env('ACCOUNT_DELETION_GRACE_DAYS', 7),
 
 ];

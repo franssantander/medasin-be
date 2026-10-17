@@ -19,6 +19,12 @@ return new class extends Migration
             $table->uuid('version');
             $table->timestamp('expires_at');
             $table->unsignedTinyInteger('failed_attempts')->default(0);
+            // Rolling counters survive resends, which reset the per-code failed_attempts.
+            $table->unsignedSmallInteger('recent_failures')->default(0);
+            $table->timestamp('recent_failures_started_at')->nullable();
+            $table->timestamp('locked_until')->nullable();
+            $table->unsignedSmallInteger('recent_sends')->default(0);
+            $table->timestamp('recent_sends_started_at')->nullable();
             $table->timestamp('sent_at');
             $table->timestamp('consumed_at')->nullable();
             $table->timestamps();

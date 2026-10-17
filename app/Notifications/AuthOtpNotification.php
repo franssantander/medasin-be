@@ -72,6 +72,16 @@ class AuthOtpNotification extends Notification implements ShouldBeEncrypted, Sho
                 ]);
         }
 
+        if ($this->purpose === AuthOtpPurpose::ACCOUNT_DELETION) {
+            return (new MailMessage)
+                ->subject('Confirm your account deletion')
+                ->greeting('Account deletion requested')
+                ->line('Use this code to confirm that you want to delete your account and all of its data.')
+                ->line($this->code)
+                ->line('This code expires '.$this->purpose->expiresInMinutes().' minutes after it was requested and can only be used once.')
+                ->line('If you did not request this, change your password now. Your account stays as it is.');
+        }
+
         return (new MailMessage)
             ->subject('Reset your password')
             ->greeting('Password reset requested')

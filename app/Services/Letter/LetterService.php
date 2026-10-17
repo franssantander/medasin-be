@@ -10,6 +10,7 @@ use App\Models\LetterMedia;
 use App\Models\User;
 use App\Services\Plan\PlanQuotaService;
 use App\Services\Profile\FileCleanupService;
+use App\Support\ImageMetadataStripper;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -24,6 +25,7 @@ class LetterService
         private readonly LetterContentService $content,
         private readonly FileCleanupService $fileCleanup,
         private readonly PlanQuotaService $quota,
+        private readonly ImageMetadataStripper $metadata,
     ) {}
 
     public function listing(
@@ -161,6 +163,7 @@ class LetterService
         return DB::transaction(function () use ($letter, $file): array {
             $user = User::query()->lockForUpdate()->findOrFail($letter->user_id);
             $letter = $user->letters()->whereKey($letter->getKey())->firstOrFail();
+            $this->metadata->strip($file->getRealPath());
             $this->quota->assertCanStore($user, (int) $file->getSize());
             $directory = "letters/{$user->uuid}/{$letter->uuid}";
             $filename = $file->hashName();

@@ -44,12 +44,27 @@ class ProfileController extends Controller
             ->withCookie($accessCookie)->withCookie($refreshCookie);
     }
 
+    public function sendDeletionCode(Request $request): JsonResponse
+    {
+        $status = $this->profile->sendDeletionCode($request->user());
+
+        return $this->success($status, $status['sent']
+            ? 'We emailed you a code to confirm the deletion.'
+            : 'Please wait before requesting another code.');
+    }
+
     public function destroy(DeleteAccountRequest $request): JsonResponse
     {
-        $this->profile->deleteAccount($request->user());
+        $deletesAt = $this->profile->scheduleDeletion(
+            $request->user(),
+            $request->validated('current_password'),
+            $request->validated('otp'),
+        );
         [$accessCookie, $refreshCookie] = $this->tokens->forgetCookies();
 
-        return $this->success(null, 'Your account has been permanently deleted.')
-            ->withCookie($accessCookie)->withCookie($refreshCookie);
+        return $this->success(
+            ['deletion_scheduled_at' => $deletesAt->toIso8601ZuluString()],
+            'Your account will be permanently deleted on '.$deletesAt->toFormattedDayDateString().'. Sign in before then to keep it.',
+        )->withCookie($accessCookie)->withCookie($refreshCookie);
     }
 }

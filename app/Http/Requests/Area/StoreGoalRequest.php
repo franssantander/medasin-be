@@ -18,7 +18,7 @@ class StoreGoalRequest extends FormRequest
         return [
             'title' => ['required', 'string', 'max:120'],
             'icon' => ['sometimes', 'string', 'max:50'],
-            'description' => ['nullable', 'string'],
+            'description' => ['nullable', 'string', 'max:10000'],
             'status' => ['sometimes', Rule::enum(GoalStatus::class)],
             'start_date' => ['nullable', 'date'],
             'due_date' => ['nullable', 'date', 'after_or_equal:start_date'],

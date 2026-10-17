@@ -10,3 +10,4 @@ Artisan::command('inspire', function () {
 
 Schedule::command('trash:prune')->hourly()->withoutOverlapping();
 Schedule::command('calendar:dispatch-reminders')->everyMinute()->withoutOverlapping(5);
+Schedule::command('accounts:purge-deleted')->hourly()->withoutOverlapping();

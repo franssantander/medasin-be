@@ -20,7 +20,7 @@ class UpdateGoalRequest extends FormRequest
         return [
             'title' => ['sometimes', 'required', 'string', 'max:120'],
             'icon' => ['sometimes', 'required', 'string', 'max:50'],
-            'description' => ['sometimes', 'nullable', 'string'],
+            'description' => ['sometimes', 'nullable', 'string', 'max:10000'],
             'status' => ['sometimes', Rule::enum(GoalStatus::class)],
             'start_date' => ['sometimes', 'nullable', 'date'],
             'due_date' => ['sometimes', 'nullable', 'date', 'after_or_equal:start_date'],

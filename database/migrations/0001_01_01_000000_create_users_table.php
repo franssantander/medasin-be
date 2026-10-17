@@ -3,6 +3,7 @@
 use App\Enum\Status;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -25,9 +26,12 @@ return new class extends Migration
             $table->enum('status', array_column(Status::cases(), 'value'))->default(Status::ACTIVE->value);
             $table->string('font_family', 20)->default('geist');
             $table->string('profile_image_path')->nullable();
+            $table->timestamp('deletion_scheduled_at')->nullable()->index();
             $table->rememberToken();
             $table->timestamps();
         });
+        // Emails are stored lowercase; this also keeps one address to one account regardless of letter case.
+        DB::statement('CREATE UNIQUE INDEX users_email_lower_unique ON users (lower(email))');
 
         Schema::create('password_reset_tokens', function (Blueprint $table) {
             $table->string('email')->primary();

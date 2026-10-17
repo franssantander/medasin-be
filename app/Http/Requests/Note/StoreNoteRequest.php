@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Note;
 
+use App\Rules\MaxBytes;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreNoteRequest extends FormRequest
@@ -15,7 +16,7 @@ class StoreNoteRequest extends FormRequest
     {
         return [
             'title' => ['required', 'string', 'max:120'],
-            'content' => ['required', 'string'],
+            'content' => ['required', 'string', new MaxBytes],
             'is_pinned' => ['sometimes', 'boolean'],
             'parent_uuid' => ['sometimes', 'nullable', 'uuid'],
         ];

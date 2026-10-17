@@ -41,7 +41,7 @@ class StoreProjectRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:120'],
-            'description' => ['nullable', 'string'],
+            'description' => ['nullable', 'string', 'max:10000'],
             'icon' => ['nullable', 'string', 'max:50'],
             'background' => ['nullable', 'string', 'max:32'],
             'status' => ['sometimes', Rule::enum(Status::class)],

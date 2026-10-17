@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Resource;
 
+use App\Rules\MaxBytes;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -20,7 +21,7 @@ class UpdateResourceRequest extends FormRequest
             'title' => ['sometimes', 'required', 'string', 'max:255'],
             'icon' => ['sometimes', 'nullable', 'string', 'max:50'],
             'background' => ['sometimes', 'nullable', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
-            'content' => ['sometimes', 'nullable', 'array'],
+            'content' => ['sometimes', 'nullable', 'array', new MaxBytes],
             'content.type' => ['required_with:content', 'in:doc'],
             'content.content' => ['sometimes', 'array'],
             'tag_uuids' => ['sometimes', 'array', 'max:100'],

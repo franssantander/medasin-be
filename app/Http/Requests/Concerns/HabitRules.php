@@ -16,7 +16,7 @@ trait HabitRules
         return [
             'name' => $partial ? ['sometimes', 'required', 'string', 'max:120'] : ['required', 'string', 'max:120'],
             'icon' => $partial ? ['sometimes', 'required', 'string', 'max:50'] : ['sometimes', 'string', 'max:50'],
-            'description' => ['sometimes', 'nullable', 'string'],
+            'description' => ['sometimes', 'nullable', 'string', 'max:10000'],
             'frequency' => ['sometimes', Rule::enum(HabitFrequency::class)],
             'schedule' => ['sometimes', 'nullable', 'array'],
             'schedule.days' => $partial ? ['sometimes', 'array', 'min:1'] : ['required_if:frequency,weekly,custom', 'array', 'min:1'],

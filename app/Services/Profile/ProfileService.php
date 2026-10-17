@@ -13,12 +13,17 @@ use App\Models\RefreshToken;
 use App\Models\Resource;
 use App\Models\ResourceAttachment;
 use App\Models\User;
+use App\Notifications\AccountDeletionNotification;
+use App\Services\Auth\AuthOtpService;
 use App\Services\Auth\TokenService;
+use App\Support\ImageMetadataStripper;
+use Carbon\CarbonImmutable;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -33,6 +38,8 @@ class ProfileService
     public function __construct(
         private readonly TokenService $tokens,
         private readonly FileCleanupService $files,
+        private readonly AuthOtpService $otp,
+        private readonly ImageMetadataStripper $metadata,
     ) {}
 
     public function storeImage(User $user, UploadedFile $image): User
@@ -40,6 +47,7 @@ class ProfileService
         return DB::transaction(function () use ($user, $image): User {
             $user = User::query()->lockForUpdate()->findOrFail($user->getKey());
             $previous = $user->profile_image_path;
+            $this->metadata->strip($image->getRealPath());
             $directory = "profiles/{$user->uuid}";
             $filename = $image->hashName();
             $path = "{$directory}/{$filename}";
@@ -122,32 +130,98 @@ class ProfileService
         });
     }
 
-    public function deleteAccount(User $user): void
+    /**
+     * Emails a one-time code that confirms deletion for accounts without a known password (Google sign-ups).
+     *
+     * @return array{sent: bool, otp_expires_in: int, resend_after: int}
+     */
+    public function sendDeletionCode(User $user): array
     {
-        DB::transaction(function () use ($user): void {
-            $user = User::query()->lockForUpdate()->findOrFail($user->getKey());
-            [$files, $directories] = $this->fileManifest($user);
-            $this->files->enqueue($files, $directories);
+        $sent = $this->otp->send($user, AuthOtpPurpose::ACCOUNT_DELETION);
 
+        return ['sent' => $sent, ...$this->otp->status($user, AuthOtpPurpose::ACCOUNT_DELETION)];
+    }
+
+    /**
+     * Schedules the account for permanent deletion after the grace period, once the owner has proved
+     * the account with its password or an emailed code. Every session is signed out straight away;
+     * signing in again before the purge cancels it (TokenService::issue).
+     */
+    public function scheduleDeletion(User $user, #[\SensitiveParameter] ?string $password, #[\SensitiveParameter] ?string $otp): CarbonImmutable
+    {
+        // The code is consumed in its own transaction so a wrong guess still counts after the validation error.
+        if ($password !== null && $password !== '') {
+            $this->checkPassword($user, $password);
+        } elseif (! $this->otp->consume($user, AuthOtpPurpose::ACCOUNT_DELETION, (string) $otp)) {
+            throw ValidationException::withMessages([
+                'otp' => ['The verification code is invalid or has expired.'],
+            ]);
+        }
+
+        return DB::transaction(function () use ($user): CarbonImmutable {
+            $user = User::query()->lockForUpdate()->findOrFail($user->getKey());
+            $deletesAt = CarbonImmutable::now()->addDays((int) config('auth.account_deletion_grace_days'))->startOfSecond();
+
+            $user->forceFill(['deletion_scheduled_at' => $deletesAt])->saveOrFail();
             $this->tokens->revokeAllForUser($user);
             Password::broker()->deleteToken($user);
-            $user->notifications()->delete();
             DB::table('sessions')->where('user_id', $user->getKey())->delete();
-            DB::table('personal_access_tokens')->where('tokenable_type', $user->getMorphClass())
-                ->where('tokenable_id', $user->getKey())->delete();
+            $user->notify(new AccountDeletionNotification(AccountDeletionNotification::SCHEDULED, $deletesAt));
 
-            $clientIds = $user->oauthApps()->pluck('id');
-            $tokenIds = Passport::token()->newQuery()->where('user_id', $user->getKey())
-                ->orWhereIn('client_id', $clientIds)->pluck('id');
-            Passport::refreshToken()->newQuery()->whereIn('access_token_id', $tokenIds)->delete();
-            Passport::token()->newQuery()->whereIn('id', $tokenIds)->delete();
-            Passport::authCode()->newQuery()->where('user_id', $user->getKey())
-                ->orWhereIn('client_id', $clientIds)->delete();
-            Passport::deviceCode()->newQuery()->where('user_id', $user->getKey())
-                ->orWhereIn('client_id', $clientIds)->delete();
-            $user->oauthApps()->delete();
-            $user->delete();
+            return $deletesAt;
         });
+    }
+
+    /**
+     * Permanently deletes an account whose grace period has ended. Returns false when the owner signed
+     * in again (cancelling the deletion) or the account is already gone.
+     */
+    public function purgeScheduledDeletion(User $user): bool
+    {
+        $email = null;
+        $purged = DB::transaction(function () use ($user, &$email): bool {
+            $user = User::query()->lockForUpdate()->find($user->getKey());
+            if (! $user || $user->deletion_scheduled_at?->lte(now()) !== true) {
+                return false;
+            }
+
+            $email = $user->email;
+            $this->purge($user);
+
+            return true;
+        });
+
+        if ($purged) {
+            Notification::route('mail', $email)->notify(new AccountDeletionNotification(AccountDeletionNotification::COMPLETED));
+        }
+
+        return $purged;
+    }
+
+    /** Removes the locked account with its tokens, sessions, notifications, and files. */
+    protected function purge(User $user): void
+    {
+        [$files, $directories] = $this->fileManifest($user);
+        $this->files->enqueue($files, $directories);
+
+        $this->tokens->revokeAllForUser($user);
+        Password::broker()->deleteToken($user);
+        $user->notifications()->delete();
+        DB::table('sessions')->where('user_id', $user->getKey())->delete();
+        DB::table('personal_access_tokens')->where('tokenable_type', $user->getMorphClass())
+            ->where('tokenable_id', $user->getKey())->delete();
+
+        $clientIds = $user->oauthApps()->pluck('id');
+        $tokenIds = Passport::token()->newQuery()->where('user_id', $user->getKey())
+            ->orWhereIn('client_id', $clientIds)->pluck('id');
+        Passport::refreshToken()->newQuery()->whereIn('access_token_id', $tokenIds)->delete();
+        Passport::token()->newQuery()->whereIn('id', $tokenIds)->delete();
+        Passport::authCode()->newQuery()->where('user_id', $user->getKey())
+            ->orWhereIn('client_id', $clientIds)->delete();
+        Passport::deviceCode()->newQuery()->where('user_id', $user->getKey())
+            ->orWhereIn('client_id', $clientIds)->delete();
+        $user->oauthApps()->delete();
+        $user->delete();
     }
 
     protected function checkPassword(User $user, #[\SensitiveParameter] string $password): void
@@ -162,8 +236,9 @@ class ProfileService
     /** @return array{array<string, list<string>>, array<string, list<string>>} */
     protected function fileManifest(User $user): array
     {
-        $areas = Area::withTrashed()->where('user_id', $user->getKey())->get(['id', 'uuid', 'background_image']);
-        $resources = Resource::withTrashed()->where('user_id', $user->getKey())->get(['id', 'uuid']);
+        // toBase(): an empty Eloquent collection stays Eloquent after pluck/map and cannot merge plain paths.
+        $areas = Area::withTrashed()->where('user_id', $user->getKey())->get(['id', 'uuid', 'background_image'])->toBase();
+        $resources = Resource::withTrashed()->where('user_id', $user->getKey())->get(['id', 'uuid'])->toBase();
         $noteIds = Note::withTrashed()->where('user_id', $user->getKey())->pluck('id');
         $letterIds = Letter::withTrashed()->where('user_id', $user->getKey())->pluck('id');
 

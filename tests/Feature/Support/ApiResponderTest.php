@@ -37,7 +37,7 @@ it('returns JSON debug errors without stream arguments or credentials in the tra
     }
 });
 
-it('omits debug details when debugging is disabled or the environment is production', function (
+it('omits debug details and the raw exception message when debugging is disabled or the environment is production', function (
     bool $debug,
     string $environment,
 ): void {
@@ -50,7 +50,7 @@ it('omits debug details when debugging is disabled or the environment is product
     $this->getJson('/api/v1/test-exception')->assertServerError()->assertExactJson([
         'data' => null,
         'status' => 500,
-        'message' => 'Simulated storage failure.',
+        'message' => 'An unexpected error occurred. Please try again later.',
     ]);
 })->with([
     'debug disabled' => [false, 'testing'],

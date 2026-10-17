@@ -21,6 +21,18 @@ class DatabaseSeederTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_production_seeding_creates_the_catalog_and_client_but_no_demo_accounts(): void
+    {
+        $this->app->instance('env', 'production');
+
+        // Invoked directly because db:seed asks for confirmation in production.
+        $this->app->make(DatabaseSeeder::class)->setContainer($this->app)->__invoke();
+
+        $this->assertDatabaseEmpty('users');
+        $this->assertDatabaseCount('oauth_clients', 1);
+        $this->assertTrue(Plan::query()->where('slug', 'clarity')->exists());
+    }
+
     public function test_repeated_seeding_preserves_existing_users_and_demo_changes(): void
     {
         $this->travelTo('2026-10-10 08:00:00');

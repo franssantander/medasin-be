@@ -19,6 +19,8 @@ return new class extends Migration
             $table->boolean('remember_me')->default(true);
             $table->timestamp('expires_at');
             $table->timestamp('revoked_at')->nullable();
+            // Set only when a token is exchanged, so reuse of a rotated token can be told apart from logout or reset.
+            $table->timestamp('rotated_at')->nullable();
             $table->timestamps();
 
             $table->index(['user_id', 'revoked_at']);

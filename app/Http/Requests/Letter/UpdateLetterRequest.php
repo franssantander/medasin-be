@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Letter;
 
+use App\Rules\MaxBytes;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
@@ -25,7 +26,7 @@ class UpdateLetterRequest extends FormRequest
         return [
             'title' => ['sometimes', 'required', 'string', 'max:120'],
             'subtitle' => ['sometimes', 'nullable', 'string', 'max:240'],
-            'content' => ['sometimes', 'required', 'string', 'json'],
+            'content' => ['sometimes', 'required', 'string', 'json', new MaxBytes],
             'done' => ['sometimes', 'boolean'],
         ];
     }

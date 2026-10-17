@@ -10,6 +10,7 @@ use App\Models\RefreshToken;
 use App\Models\User;
 use App\Services\Auth\TokenService;
 use App\Services\Profile\FileCleanupService;
+use App\Services\Profile\ProfileService;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -323,11 +324,11 @@ class ProfileTest extends AuthTestCase
         $user = $this->userWithImage();
         Passport::actingAs($user);
 
-        $this->deleteJson(route('profile.destroy'), $payload)
+        $this->deleteJson(route('profile.destroy'), [...$payload, 'current_password' => 'password'])
             ->assertUnprocessable()->assertJsonValidationErrors('confirmation')
             ->assertJsonMissingPath('errors.current_password');
 
-        $this->assertDatabaseHas('users', ['id' => $user->id]);
+        $this->assertDatabaseHas('users', ['id' => $user->id, 'deletion_scheduled_at' => null]);
         Storage::disk('public')->assertExists($user->profile_image_path);
         $this->assertDatabaseCount('jobs', 0);
     }
@@ -408,9 +409,16 @@ class ProfileTest extends AuthTestCase
         Storage::disk('local')->put("resources/{$resource->uuid}/orphan.pdf", 'owned');
         Storage::disk('public')->put('areas/backgrounds/other.png', 'other');
 
+        $this->freezeTime();
         $response = $this->withUnencryptedCookie('auth_token', $access->getValue())
-            ->deleteJson(route('profile.destroy'), ['confirmation' => 'DELETE', 'user_id' => $other->id])
-            ->assertOk()->assertJsonPath('data', null);
+            ->deleteJson(route('profile.destroy'), ['confirmation' => 'DELETE', 'current_password' => 'password', 'user_id' => $other->id])
+            ->assertOk()->assertJsonPath('data.deletion_scheduled_at', now()->addDays(7)->toIso8601ZuluString());
+
+        $this->assertDatabaseHas('users', ['id' => $other->id, 'deletion_scheduled_at' => null]);
+        $this->artisan('accounts:purge-deleted')->assertSuccessful();
+        $this->assertDatabaseHas('users', ['id' => $user->id]);
+        $this->travel(7)->days();
+        $this->artisan('accounts:purge-deleted')->assertSuccessful();
 
         $this->assertDatabaseMissing('users', ['id' => $user->id]);
         foreach (['areas', 'notes', 'letters', 'resources', 'trash_entries', 'auth_otps', 'refresh_tokens', 'sessions', 'oauth_auth_codes', 'oauth_device_codes'] as $table) {
@@ -455,10 +463,10 @@ class ProfileTest extends AuthTestCase
         $user = $this->userWithImage();
         app(TokenService::class)->issue($user, true);
         Password::broker()->createToken($user);
+        $user->forceFill(['deletion_scheduled_at' => now()->subMinute()])->save();
         $this->useMismatchedCleanupConnection();
-        Passport::actingAs($user);
 
-        $this->deleteJson(route('profile.destroy'), ['confirmation' => 'DELETE'])->assertServerError();
+        $this->assertThrows(fn () => app(ProfileService::class)->purgeScheduledDeletion($user));
 
         $this->assertDatabaseHas('users', ['id' => $user->id]);
         $this->assertSame(1, $user->tokens()->where('revoked', false)->count());
@@ -475,7 +483,7 @@ class ProfileTest extends AuthTestCase
         app(TokenService::class)->issue($user, true);
         Password::broker()->createToken($user);
         $this->createResetOtp($user);
-        Passport::actingAs($user);
+        $user->forceFill(['deletion_scheduled_at' => now()->subMinute()])->save();
         User::deleting(function (User $deleting): void {
             $this->assertDatabaseCount('jobs', 1);
             $this->assertSame(0, $deleting->tokens()->count());
@@ -484,8 +492,7 @@ class ProfileTest extends AuthTestCase
         });
 
         try {
-            $this->deleteJson(route('profile.destroy'), ['confirmation' => 'DELETE'])
-                ->assertServerError();
+            $this->assertThrows(fn () => app(ProfileService::class)->purgeScheduledDeletion($user), RuntimeException::class);
         } finally {
             Event::forget('eloquent.deleting: '.User::class);
         }
@@ -515,6 +522,7 @@ class ProfileTest extends AuthTestCase
             'remove' => ['DELETE', 'profile.image.destroy'],
             'password' => ['PATCH', 'profile.password.update'],
             'account deletion' => ['DELETE', 'profile.destroy'],
+            'deletion code' => ['POST', 'profile.deletion-code'],
         ];
     }
 
