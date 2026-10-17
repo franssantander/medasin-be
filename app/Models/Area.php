@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Concerns\HasUuid;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -21,6 +22,7 @@ use Illuminate\Support\Str;
     'description',
     'archived_at',
 ])]
+#[Hidden(['archived_project_ids'])]
 class Area extends Model
 {
     use HasUuid, SoftDeletes;
@@ -33,6 +35,7 @@ class Area extends Model
     {
         return [
             'archived_at' => 'datetime',
+            'archived_project_ids' => 'array',
         ];
     }
 

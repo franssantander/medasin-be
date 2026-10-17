@@ -238,7 +238,7 @@ class AreaModuleTest extends TestCase
 
         $this->postJson(route('area.archive', $area))
             ->assertOk()
-            ->assertJsonPath('message', 'Successfully archived area. 1 active project moved to Inbox.');
+            ->assertJsonPath('message', 'Successfully archived area. 1 active project moved to Inbox. Restoring the area moves them back.');
 
         $this->assertNotNull($area->fresh()->archived_at);
         $this->assertNull($activeProject->fresh()->area_id);

@@ -6,6 +6,7 @@ use App\Data\Letter\LetterData;
 use App\Enum\LetterListFilter;
 use App\Enum\LetterStatus;
 use App\Models\Letter;
+use App\Models\LetterMedia;
 use App\Models\User;
 use App\Services\Plan\PlanQuotaService;
 use App\Services\Profile\FileCleanupService;
@@ -13,7 +14,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Throwable;
@@ -167,12 +167,12 @@ class LetterService
             $path = "{$directory}/{$filename}";
             DB::afterRollBack(function () use ($path): void {
                 try {
-                    $this->fileCleanup->deleteOrQueue(['public' => [$path]]);
+                    $this->fileCleanup->deleteOrQueue([LetterMedia::DISK => [$path]]);
                 } catch (Throwable $exception) {
                     report($exception);
                 }
             });
-            if ($file->storeAs($directory, $filename, 'public') === false) {
+            if ($file->storeAs($directory, $filename, LetterMedia::DISK) === false) {
                 throw new RuntimeException('Unable to store letter image.');
             }
             $media = $letter->media()->create([
@@ -184,7 +184,7 @@ class LetterService
 
             return [
                 'uuid' => $media->uuid,
-                'url' => url(Storage::disk('public')->url($media->path)),
+                'url' => $media->url(),
                 'kind' => 'image',
                 'mime_type' => $media->mime_type,
                 'name' => $media->original_name,

@@ -432,6 +432,8 @@ class DemoUserSeeder extends Seeder
         $today = CarbonImmutable::today(self::TIMEZONE);
         foreach (['Morning walk', 'Read for thirty minutes'] as $index => $name) {
             $habit = $user->habits()->where('name', $name)->sole();
+            // Check-ins cannot predate the habit, so the sample week needs a habit that existed then.
+            $habit->forceFill(['created_at' => $today->subDays(13)->startOfDay()])->saveQuietly();
             for ($daysAgo = 6; $daysAgo >= 0; $daysAgo--) {
                 app(HabitService::class)->checkIn($user, $habit, $today->subDays($daysAgo)->toDateString(), [
                     'completed' => ! ($index === 1 && $daysAgo === 1),

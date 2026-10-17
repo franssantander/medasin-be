@@ -2,11 +2,14 @@
 
 namespace App\Http\Requests\Habit;
 
+use App\Http\Requests\Concerns\HabitRules;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateHabitRequest extends FormRequest
 {
+    use HabitRules;
+
     /**
      * Determine if the user is authorized to make this request.
      */
@@ -22,6 +25,6 @@ class UpdateHabitRequest extends FormRequest
      */
     public function rules(): array
     {
-        return ['name' => ['sometimes', 'string', 'max:120'], 'frequency' => ['sometimes', 'string'], 'schedule' => ['sometimes', 'nullable', 'array'], 'is_active' => ['sometimes', 'boolean'], 'area_uuid' => ['sometimes', 'nullable', 'uuid']];
+        return [...$this->habitRules(partial: true), 'area_uuid' => $this->activeAreaRule()];
     }
 }

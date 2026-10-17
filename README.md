@@ -42,6 +42,17 @@ php artisan queue:work
 php artisan reverb:start
 ```
 
+## Private note and letter media
+
+Images and videos in notes and letters are stored on the private `local` disk and served only to their owner through `/api/v1/notes/media/{uuid}` and `/api/v1/letters/media/{uuid}`. Files uploaded before this change still sit on the public disk. After deploying, move them and rewrite the URLs saved in notes, letters, exports, journal entries, resources, and board tasks:
+
+```bash
+php artisan media:privatize --dry-run
+php artisan media:privatize
+```
+
+The command is safe to run more than once. Until it runs, older files are still served (from the public disk) but remain reachable by anyone with the link.
+
 ## Learning Laravel
 
 Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.

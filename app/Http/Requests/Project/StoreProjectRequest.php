@@ -3,12 +3,17 @@
 namespace App\Http\Requests\Project;
 
 use App\Enum\Status;
+use App\Http\Requests\Concerns\ValidatesUniqueName;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class StoreProjectRequest extends FormRequest
 {
+    use ValidatesUniqueName;
+
     public function authorize(): bool
     {
         return true;
@@ -60,5 +65,18 @@ class StoreProjectRequest extends FormRequest
                 'prohibits:area_uuid',
             ],
         ];
+    }
+
+    public function after(): array
+    {
+        return [function (Validator $validator): void {
+            $this->validateUniqueName(
+                $validator,
+                $this->user()->projects(),
+                'slug',
+                Str::slug($this->string('name')->toString()),
+                'project',
+            );
+        }];
     }
 }

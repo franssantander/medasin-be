@@ -25,7 +25,7 @@ class UpdateLetterExportRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'pages' => ['required', 'array', 'list', 'min:2'],
+            'pages' => ['required', 'array', 'list', 'min:2', 'max:'.LetterExportLimits::maxPages()],
             'pages.*' => ['required', 'array:uuid,layout,text_scale,text_scale_mode,title,subtitle,cover,content_source,blocks,signature'],
             'pages.*.uuid' => ['required', 'uuid', 'distinct'],
             'pages.*.layout' => ['required', Rule::in(['cover', 'body', 'quote'])],
@@ -46,7 +46,7 @@ class UpdateLetterExportRequest extends FormRequest
             'pages.*.cover.subheader_font_scale' => ['sometimes', 'numeric', 'between:0.7,1.4'],
             'pages.*.cover.title_font_scale' => ['sometimes', 'numeric', 'between:0.7,1.4'],
             'pages.*.cover.body_font_scale' => ['sometimes', 'numeric', 'between:0.7,1.4'],
-            'pages.*.cover.description_blocks' => ['required_with:pages.*.cover', 'array', 'list'],
+            'pages.*.cover.description_blocks' => ['required_with:pages.*.cover', 'array', 'list', 'max:'.LetterExportLimits::MAX_BLOCKS_PER_PAGE],
             'pages.*.cover.description_blocks.*' => ['array'],
             'pages.*.cover.author_name' => ['present_with:pages.*.cover', 'nullable', 'string', 'max:120'],
             'pages.*.cover.author_handle' => ['sometimes', 'nullable', 'string', 'max:80'],
@@ -56,9 +56,9 @@ class UpdateLetterExportRequest extends FormRequest
             'pages.*.cover.show_date' => ['sometimes', 'boolean'],
             'pages.*.cover.show_page_numbers' => ['sometimes', 'boolean'],
             'pages.*.cover.show_signature' => ['sometimes', 'boolean'],
-            'pages.*.cover.avatar_url' => ['present_with:pages.*.cover', 'nullable', 'string', 'max:2048'],
-            'pages.*.cover.hero_image_url' => ['present_with:pages.*.cover', 'nullable', 'string', 'max:2048'],
-            'pages.*.cover.hero_image_original_url' => ['sometimes', 'nullable', 'string', 'max:2048'],
+            'pages.*.cover.avatar_url' => ['present_with:pages.*.cover', 'nullable', 'string', 'max:2048', LetterExportLimits::imageUrl()],
+            'pages.*.cover.hero_image_url' => ['present_with:pages.*.cover', 'nullable', 'string', 'max:2048', LetterExportLimits::imageUrl()],
+            'pages.*.cover.hero_image_original_url' => ['sometimes', 'nullable', 'string', 'max:2048', LetterExportLimits::imageUrl()],
             'pages.*.cover.hero_image_crop' => ['sometimes', 'nullable', 'array:x,y,width,height'],
             'pages.*.cover.hero_image_crop.x' => ['required_with:pages.*.cover.hero_image_crop', 'numeric', 'between:0,1'],
             'pages.*.cover.hero_image_crop.y' => ['required_with:pages.*.cover.hero_image_crop', 'numeric', 'between:0,1'],
@@ -70,7 +70,7 @@ class UpdateLetterExportRequest extends FormRequest
             'pages.*.cover.hero_image_caption_placement' => ['sometimes', Rule::in(['overlay', 'below'])],
             'pages.*.cover.section_order' => ['required_with:pages.*.cover', 'array', 'list', 'between:4,5'],
             'pages.*.cover.section_order.*' => ['required', 'string', 'distinct', Rule::in(['header', 'content', 'title', 'entry', 'author', 'hero'])],
-            'pages.*.blocks' => ['present', 'array'],
+            'pages.*.blocks' => ['present', 'array', 'max:'.LetterExportLimits::MAX_BLOCKS_PER_PAGE],
             'pages.*.blocks.*' => ['array'],
         ];
     }
@@ -113,6 +113,7 @@ class UpdateLetterExportRequest extends FormRequest
                 }
 
                 SharedLetterPageTextScale::validate($validator, $pages);
+                LetterExportLimits::validate($validator, $pages);
             },
         ];
     }

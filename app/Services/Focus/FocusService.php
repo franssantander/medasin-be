@@ -12,6 +12,7 @@ use App\Models\FocusTask;
 use App\Models\Project;
 use App\Models\User;
 use App\Services\Journal\JournalService;
+use App\Services\Search\SearchText;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -79,7 +80,7 @@ class FocusService
                 ->where('context_type', (new Project)->getMorphClass())
                 ->whereHasMorph('context', [Project::class], fn ($project) => $project->whereNull('archived_at')))
             ->whereHas('stage', fn ($query) => $query->where('key', '!=', BoardStageKey::DONE->value))
-            ->when($search, fn ($query) => $query->where('title', 'like', '%'.$search.'%'))
+            ->when($search, fn ($query) => $query->whereRaw("LOWER(title) LIKE ? ESCAPE '!'", [SearchText::pattern($search)]))
             ->with(['stage', 'board.context'])
             ->orderBy('title')->limit(50)->get();
     }
@@ -180,12 +181,16 @@ class FocusService
 
     public function pause(User $user, FocusSession $session): FocusSession
     {
-        $session = $this->ownedSession($user, $session);
+        return DB::transaction(fn (): FocusSession => $this->pauseLocked($this->ownedSession($user, $session, lock: true)));
+    }
+
+    private function pauseLocked(FocusSession $session): FocusSession
+    {
         if ($session->status !== FocusSessionStatus::RUNNING) {
             throw new ConflictHttpException('Only a running session can be paused.');
         }
         if ($session->ends_at->isPast()) {
-            return $this->complete($user, $session);
+            return $this->completeLocked($session);
         }
         $session->updateOrFail([
             'status' => FocusSessionStatus::PAUSED,
@@ -199,7 +204,11 @@ class FocusService
 
     public function resume(User $user, FocusSession $session): FocusSession
     {
-        $session = $this->ownedSession($user, $session);
+        return DB::transaction(fn (): FocusSession => $this->resumeLocked($this->ownedSession($user, $session, lock: true)));
+    }
+
+    private function resumeLocked(FocusSession $session): FocusSession
+    {
         if ($session->status !== FocusSessionStatus::PAUSED) {
             throw new ConflictHttpException('Only a paused session can be resumed.');
         }
@@ -210,21 +219,30 @@ class FocusService
 
     public function complete(User $user, FocusSession $session): FocusSession
     {
-        $session = $this->ownedSession($user, $session);
+        return DB::transaction(fn (): FocusSession => $this->completeLocked($this->ownedSession($user, $session, lock: true)));
+    }
+
+    private function completeLocked(FocusSession $session): FocusSession
+    {
         if ($session->status === FocusSessionStatus::COMPLETED) {
             return $this->loadSession($session);
         }
         if ($session->status !== FocusSessionStatus::RUNNING || ($session->ends_at && $session->ends_at->isFuture())) {
             throw new ConflictHttpException('This session has not finished yet.');
         }
-        $session->updateOrFail(['status' => FocusSessionStatus::COMPLETED, 'remaining_seconds' => 0, 'ends_at' => null, 'paused_at' => null, 'completed_at' => now()]);
+        // A timer that ran out while nobody was looking finished at ends_at, so stats land on the right day.
+        $session->updateOrFail(['status' => FocusSessionStatus::COMPLETED, 'remaining_seconds' => 0, 'ends_at' => null, 'paused_at' => null, 'completed_at' => $session->ends_at ?? now()]);
 
         return $this->loadSession($session);
     }
 
     public function cancel(User $user, FocusSession $session): FocusSession
     {
-        $session = $this->ownedSession($user, $session);
+        return DB::transaction(fn (): FocusSession => $this->cancelLocked($this->ownedSession($user, $session, lock: true)));
+    }
+
+    private function cancelLocked(FocusSession $session): FocusSession
+    {
         if (! in_array($session->status, [FocusSessionStatus::RUNNING, FocusSessionStatus::PAUSED], true)) {
             throw new ConflictHttpException('Only an active session can be reset.');
         }
@@ -249,7 +267,7 @@ class FocusService
             $session->updateOrFail(['mood' => $mood, 'reflection_note' => $note]);
 
             if ($mood !== null || $note !== null) {
-                $this->journalService->upsertFocusReflection($user, $session, $mood, $note);
+                $this->journalService->createFocusReflectionEntry($user, $session, $mood, $note);
             }
 
             return $this->loadSession($session);
@@ -259,7 +277,7 @@ class FocusService
     private function reconcileExpired(User $user): void
     {
         $user->focusSessions()->where('status', FocusSessionStatus::RUNNING->value)->where('ends_at', '<=', now())->get()
-            ->each(fn (FocusSession $session) => $session->updateOrFail(['status' => FocusSessionStatus::COMPLETED, 'remaining_seconds' => 0, 'ends_at' => null, 'completed_at' => now()]));
+            ->each(fn (FocusSession $session) => $session->updateOrFail(['status' => FocusSessionStatus::COMPLETED, 'remaining_seconds' => 0, 'ends_at' => null, 'completed_at' => $session->ends_at]));
     }
 
     private function activeSession(User $user): ?FocusSession
@@ -299,9 +317,9 @@ class FocusService
         return $user->focusTasks()->whereKey($task->getKey())->firstOrFail();
     }
 
-    private function ownedSession(User $user, FocusSession $session): FocusSession
+    private function ownedSession(User $user, FocusSession $session, bool $lock = false): FocusSession
     {
-        return $user->focusSessions()->whereKey($session->getKey())->firstOrFail();
+        return $user->focusSessions()->whereKey($session->getKey())->when($lock, fn ($query) => $query->lockForUpdate())->firstOrFail();
     }
 
     private function loadTask(FocusTask $task): FocusTask

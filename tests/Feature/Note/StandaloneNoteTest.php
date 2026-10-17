@@ -25,18 +25,18 @@ class StandaloneNoteTest extends TestCase
     #[DataProvider('partialWriteFailures')]
     public function test_note_media_storage_failure_removes_a_file_written_before_the_failure(bool $throw): void
     {
-        $disk = Storage::fake('public');
+        $disk = Storage::fake('local');
         $user = User::factory()->create();
         $note = $user->standaloneNotes()->create(['title' => 'Partial upload', 'content' => 'Note content']);
         Passport::actingAs($user);
-        $this->failAfterStorageWrite('public', $disk, $throw);
+        $this->failAfterStorageWrite('local', $disk, $throw);
 
         try {
             $this->postJson(route('notes.media.store', $note->uuid), [
                 'file' => UploadedFile::fake()->create('photo.png', 120, 'image/png'),
             ])->assertServerError();
         } finally {
-            Storage::set('public', $disk);
+            Storage::set('local', $disk);
         }
 
         $this->assertSame([], $disk->allFiles());
@@ -55,7 +55,7 @@ class StandaloneNoteTest extends TestCase
 
     public function test_note_media_does_not_write_a_file_after_its_cached_owner_was_deleted(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
         $user = User::factory()->create();
         $note = $user->standaloneNotes()->create(['title' => 'Deleted owner note', 'content' => 'Note content']);
         $user->delete();
@@ -64,14 +64,14 @@ class StandaloneNoteTest extends TestCase
             app(NoteService::class)->storeMedia($user, $note, UploadedFile::fake()->create('photo.png', 120, 'image/png'));
             $this->fail('An upload for a deleted owner must fail.');
         } catch (ModelNotFoundException) {
-            $this->assertSame([], Storage::disk('public')->allFiles());
+            $this->assertSame([], Storage::disk('local')->allFiles());
             $this->assertDatabaseCount('note_media', 0);
         }
     }
 
     public function test_note_media_does_not_write_a_file_after_its_cached_note_was_deleted(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
         $user = User::factory()->create();
         $note = $user->standaloneNotes()->create(['title' => 'Deleted note', 'content' => 'Note content']);
         $note->forceDelete();
@@ -80,14 +80,14 @@ class StandaloneNoteTest extends TestCase
             app(NoteService::class)->storeMedia($user, $note, UploadedFile::fake()->create('photo.png', 120, 'image/png'));
             $this->fail('An upload for a deleted note must fail.');
         } catch (ModelNotFoundException) {
-            $this->assertSame([], Storage::disk('public')->allFiles());
+            $this->assertSame([], Storage::disk('local')->allFiles());
             $this->assertDatabaseCount('note_media', 0);
         }
     }
 
     public function test_note_media_persistence_failure_removes_the_new_file(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
         $user = User::factory()->create();
         $note = $user->standaloneNotes()->create(['title' => 'Rollback note', 'content' => 'Note content']);
         Passport::actingAs($user);
@@ -104,21 +104,21 @@ class StandaloneNoteTest extends TestCase
             NoteMedia::clearBootedModels();
         }
 
-        $this->assertSame([], Storage::disk('public')->allFiles());
+        $this->assertSame([], Storage::disk('local')->allFiles());
         $this->assertDatabaseCount('note_media', 0);
         $this->assertModelExists($note);
     }
 
     public function test_a_later_outer_transaction_rollback_removes_uploaded_note_files(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
         $user = User::factory()->create();
         $note = $user->standaloneNotes()->create(['title' => 'Outer rollback note', 'content' => 'Note content']);
 
         try {
             DB::transaction(function () use ($user, $note): void {
                 app(NoteService::class)->storeMedia($user, $note, UploadedFile::fake()->create('photo.png', 120, 'image/png'));
-                $this->assertCount(1, Storage::disk('public')->allFiles());
+                $this->assertCount(1, Storage::disk('local')->allFiles());
                 throw new RuntimeException('Roll back the enclosing transaction.');
             });
             $this->fail('The enclosing transaction must fail.');
@@ -126,7 +126,7 @@ class StandaloneNoteTest extends TestCase
             $this->assertSame('Roll back the enclosing transaction.', $exception->getMessage());
         }
 
-        $this->assertSame([], Storage::disk('public')->allFiles());
+        $this->assertSame([], Storage::disk('local')->allFiles());
         $this->assertDatabaseCount('note_media', 0);
     }
 
@@ -231,7 +231,7 @@ class StandaloneNoteTest extends TestCase
 
     public function test_standalone_note_media_is_validated_and_retained_through_trash_restore(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
         $user = User::factory()->create();
         Passport::actingAs($user);
         $root = $this->postJson(route('notes.store'), [
@@ -248,7 +248,7 @@ class StandaloneNoteTest extends TestCase
             'file' => UploadedFile::fake()->create('diagram.png', 120, 'image/png'),
         ])->assertCreated();
         $path = NoteMedia::query()->sole()->path;
-        Storage::disk('public')->assertExists($path);
+        Storage::disk('local')->assertExists($path);
 
         $this->post(route('notes.media.store', $root['uuid']), [
             'file' => UploadedFile::fake()->create('oversized.png', 10 * 1024 + 1, 'image/png'),
@@ -266,7 +266,7 @@ class StandaloneNoteTest extends TestCase
 
         $this->assertNotSoftDeleted('notes', ['uuid' => $root['uuid']]);
         $this->assertNotSoftDeleted('notes', ['uuid' => $child['uuid']]);
-        Storage::disk('public')->assertExists($path);
+        Storage::disk('local')->assertExists($path);
     }
 
     public function test_standalone_note_creation_requires_title_and_content(): void

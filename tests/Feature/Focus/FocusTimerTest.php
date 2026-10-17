@@ -95,10 +95,11 @@ class FocusTimerTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.mood', 'tired')
             ->assertJsonPath('data.reflection_note', 'Needs a slower pace.');
+        // The entry belongs to the user once created, so a later reflection leaves it unchanged.
         $this->assertDatabaseCount('journal_entries', 1);
         $this->assertDatabaseHas('journal_entries', [
             'id' => $journalEntry->getKey(),
-            'content_text' => 'Needs a slower pace.',
+            'content_text' => 'Good momentum.',
         ]);
     }
 

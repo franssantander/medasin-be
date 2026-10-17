@@ -6,6 +6,7 @@ use App\Data\Resource\ListResourceData;
 use App\Data\Resource\ResourceData;
 use App\Data\Resource\StoreResourceData;
 use App\Enum\CoreFeature;
+use App\Models\BoardTask;
 use App\Models\Resource;
 use App\Models\ResourceTag;
 use App\Models\User;
@@ -14,8 +15,8 @@ use App\Services\Plan\PlanQuotaService;
 use App\Services\Profile\FileCleanupService;
 use App\Services\Search\SearchText;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use Throwable;
 
@@ -141,32 +142,43 @@ class ResourceService
         });
     }
 
+    /** Partial update: fields and links missing from the request are left as they are. */
     public function update(User $user, Resource $resource, array $data): array
     {
         return DB::transaction(function () use ($user, $resource, $data) {
-            $content = $data['content'] ?? null;
-            $resource->update([
-                'title' => $data['title'],
-                'icon' => $data['icon'] ?? null,
-                'background' => $data['background'] ?? null,
-                'content' => $content,
-                'content_text' => SearchText::fromDocument($content),
-            ]);
-
-            $tagIds = ResourceTag::query()->where('user_id', $user->id)->whereIn('uuid', $data['tag_uuids'] ?? [])->pluck('id')->all();
-            foreach ($data['tag_names'] ?? [] as $name) {
-                $name = trim($name);
-                $tagIds[] = ResourceTag::firstOrCreate([
-                    'user_id' => $user->id,
-                    'normalized_name' => mb_strtolower($name),
-                ], ['name' => $name])->id;
+            $attributes = Arr::only($data, ['title', 'icon', 'background', 'content']);
+            if (array_key_exists('content', $data)) {
+                $attributes['content_text'] = SearchText::fromDocument($data['content']);
             }
-            $resource->tags()->sync(array_unique($tagIds));
+            if ($attributes !== []) {
+                $resource->update($attributes);
+            }
 
-            $projectIds = $user->projects()->whereIn('uuid', $data['project_uuids'] ?? [])->pluck('id')->all();
-            $areaIds = $user->areas()->whereIn('uuid', $data['area_uuids'] ?? [])->pluck('id')->all();
-            $resource->projects()->sync($projectIds);
-            $resource->areas()->sync($areaIds);
+            if (array_key_exists('tag_uuids', $data) || array_key_exists('tag_names', $data)) {
+                $tagIds = ResourceTag::query()->where('user_id', $user->id)->whereIn('uuid', $data['tag_uuids'] ?? [])->pluck('id')->all();
+                foreach ($data['tag_names'] ?? [] as $name) {
+                    $name = trim($name);
+                    $tagIds[] = ResourceTag::firstOrCreate([
+                        'user_id' => $user->id,
+                        'normalized_name' => mb_strtolower($name),
+                    ], ['name' => $name])->id;
+                }
+                $resource->tags()->sync(array_unique($tagIds));
+            }
+
+            // Only active Projects and Areas can be chosen, so links to archived ones are kept rather than dropped.
+            if (array_key_exists('project_uuids', $data)) {
+                $resource->projects()->sync([
+                    ...$user->projects()->whereIn('uuid', $data['project_uuids'])->pluck('id')->all(),
+                    ...$resource->projects()->whereNotNull('archived_at')->pluck('projects.id')->all(),
+                ]);
+            }
+            if (array_key_exists('area_uuids', $data)) {
+                $resource->areas()->sync([
+                    ...$user->areas()->whereIn('uuid', $data['area_uuids'])->pluck('id')->all(),
+                    ...$resource->areas()->whereNotNull('archived_at')->pluck('areas.id')->all(),
+                ]);
+            }
 
             app(ApiReadCacheService::class)->invalidateUser($user);
 
@@ -177,14 +189,54 @@ class ResourceService
     public function archive(Resource $resource): array
     {
         return DB::transaction(function () use ($resource) {
+            $resource = Resource::query()->whereKey($resource->getKey())->lockForUpdate()->firstOrFail();
+
+            // Archived resources leave every context, but the links are remembered so unarchiving can restore them.
+            $previous = $resource->archived_links ?? [];
+            $merge = fn (string $key, array $ids): array => array_values(array_unique([...($previous[$key] ?? []), ...$ids]));
+            $links = [
+                'area_ids' => $merge('area_ids', $resource->areas()->pluck('areas.id')->all()),
+                'project_ids' => $merge('project_ids', $resource->projects()->pluck('projects.id')->all()),
+                'board_task_ids' => $merge('board_task_ids', $resource->boardTasks()->pluck('board_tasks.id')->all()),
+            ];
+
             $resource->areas()->detach();
             $resource->projects()->detach();
             $resource->boardTasks()->detach();
+            $resource->forceFill([
+                'archived_at' => $resource->archived_at ?? now(),
+                'archived_links' => $links,
+            ])->save();
             app(ApiReadCacheService::class)->invalidateScope('user:'.$resource->user()->value('uuid'));
 
-            if ($resource->archived_at === null) {
-                $resource->forceFill(['archived_at' => now()])->save();
-            }
+            return $this->serialize($resource->fresh(['attachments', 'tags', 'projects', 'areas']));
+        });
+    }
+
+    /** Unarchives the resource and re-links the contexts it had, skipping any that were deleted since. */
+    public function unarchive(Resource $resource): array
+    {
+        return DB::transaction(function () use ($resource) {
+            $resource = Resource::query()->whereKey($resource->getKey())->lockForUpdate()->firstOrFail();
+            $user = $resource->user()->firstOrFail();
+            $links = $resource->archived_links ?? [];
+
+            $resource->areas()->syncWithoutDetaching(
+                $user->areas()->whereIn('id', $links['area_ids'] ?? [])->pluck('id')->all(),
+            );
+            $resource->projects()->syncWithoutDetaching(
+                $user->projects()->whereIn('id', $links['project_ids'] ?? [])->pluck('id')->all(),
+            );
+            $resource->boardTasks()->syncWithoutDetaching(
+                BoardTask::query()
+                    ->whereIn('id', $links['board_task_ids'] ?? [])
+                    ->whereHas('board', fn ($query) => $query->where('user_id', $user->getKey()))
+                    ->pluck('id')
+                    ->all(),
+            );
+
+            $resource->forceFill(['archived_at' => null, 'archived_links' => null])->save();
+            app(ApiReadCacheService::class)->invalidateScope('user:'.$user->uuid);
 
             return $this->serialize($resource->fresh(['attachments', 'tags', 'projects', 'areas']));
         });
@@ -226,17 +278,6 @@ class ResourceService
 
             return $this->serialize($resource->fresh(['attachments', 'tags', 'projects', 'areas']));
         });
-    }
-
-    public function deleteAttachment(Resource $resource, string $uuid): array
-    {
-        $attachment = $resource->attachments()->where('uuid', $uuid)->firstOrFail();
-        if ($attachment->path) {
-            Storage::disk('local')->delete($attachment->path);
-        }
-        $attachment->deleteOrFail();
-
-        return $this->serialize($resource->fresh(['attachments', 'tags', 'projects', 'areas']));
     }
 
     public function serialize(Resource $resource): array

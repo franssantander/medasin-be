@@ -17,10 +17,10 @@ class UpdateResourceRequest extends FormRequest
         $owned = fn (string $table) => Rule::exists($table, 'uuid')->where('user_id', $this->user()->id);
 
         return [
-            'title' => ['required', 'string', 'max:255'],
-            'icon' => ['nullable', 'string', 'max:50'],
-            'background' => ['nullable', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
-            'content' => ['nullable', 'array'],
+            'title' => ['sometimes', 'required', 'string', 'max:255'],
+            'icon' => ['sometimes', 'nullable', 'string', 'max:50'],
+            'background' => ['sometimes', 'nullable', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+            'content' => ['sometimes', 'nullable', 'array'],
             'content.type' => ['required_with:content', 'in:doc'],
             'content.content' => ['sometimes', 'array'],
             'tag_uuids' => ['sometimes', 'array', 'max:100'],

@@ -12,6 +12,9 @@ class LetterMedia extends Model
 {
     use HasUuid;
 
+    /** Private: files are served only to their owner through letters.media.show. */
+    public const DISK = 'local';
+
     protected function casts(): array
     {
         return ['size' => 'integer'];
@@ -20,5 +23,11 @@ class LetterMedia extends Model
     public function letter(): BelongsTo
     {
         return $this->belongsTo(Letter::class);
+    }
+
+    /** Relative, so the browser requests it through the frontend's /api/v1 proxy and sends the auth cookie. */
+    public function url(): string
+    {
+        return route('letters.media.show', $this, absolute: false);
     }
 }

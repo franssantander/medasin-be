@@ -32,18 +32,18 @@ class LetterModuleTest extends TestCase
     #[DataProvider('partialWriteFailures')]
     public function test_letter_image_storage_failure_removes_a_file_written_before_the_failure(bool $throw): void
     {
-        $disk = Storage::fake('public');
+        $disk = Storage::fake('local');
         $user = User::factory()->create();
         $letter = Letter::factory()->for($user)->create();
         Passport::actingAs($user);
-        $this->failAfterStorageWrite('public', $disk, $throw);
+        $this->failAfterStorageWrite('local', $disk, $throw);
 
         try {
             $this->postJson(route('letters.media.store', $letter->uuid), [
                 'file' => UploadedFile::fake()->create('photo.png', 120, 'image/png'),
             ])->assertServerError();
         } finally {
-            Storage::set('public', $disk);
+            Storage::set('local', $disk);
         }
 
         $this->assertSame([], $disk->allFiles());
@@ -62,7 +62,7 @@ class LetterModuleTest extends TestCase
 
     public function test_letter_image_upload_does_not_write_after_its_cached_owner_was_deleted(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
         $user = User::factory()->create();
         $letter = Letter::factory()->for($user)->create();
         $user->delete();
@@ -71,14 +71,14 @@ class LetterModuleTest extends TestCase
             app(LetterService::class)->storeMedia($letter, UploadedFile::fake()->create('photo.png', 120, 'image/png'));
             $this->fail('An upload for a deleted letter owner must fail.');
         } catch (ModelNotFoundException) {
-            $this->assertSame([], Storage::disk('public')->allFiles());
+            $this->assertSame([], Storage::disk('local')->allFiles());
             $this->assertDatabaseCount('letter_media', 0);
         }
     }
 
     public function test_letter_image_persistence_failure_removes_the_new_file(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
         $user = User::factory()->create();
         $letter = Letter::factory()->for($user)->create();
         Passport::actingAs($user);
@@ -95,7 +95,7 @@ class LetterModuleTest extends TestCase
             LetterMedia::clearBootedModels();
         }
 
-        $this->assertSame([], Storage::disk('public')->allFiles());
+        $this->assertSame([], Storage::disk('local')->allFiles());
         $this->assertDatabaseCount('letter_media', 0);
         $this->assertModelExists($letter);
     }
@@ -1312,7 +1312,7 @@ class LetterModuleTest extends TestCase
 
     public function test_user_can_upload_an_image_to_their_letter(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
         $user = User::factory()->create();
         $letter = Letter::factory()->for($user)->create();
         Passport::actingAs($user);
@@ -1328,12 +1328,13 @@ class LetterModuleTest extends TestCase
         $media = LetterMedia::query()->where('uuid', $response->json('data.uuid'))->sole();
 
         $this->assertSame($letter->getKey(), $media->letter_id);
-        Storage::disk('public')->assertExists($media->path);
+        Storage::disk('local')->assertExists($media->path);
+        $response->assertJsonPath('data.url', '/api/v1/letters/media/'.$media->uuid);
     }
 
     public function test_letter_image_upload_is_scoped_to_the_owner(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
         $owner = User::factory()->create();
         $letter = Letter::factory()->for($owner)->create();
         Passport::actingAs(User::factory()->create());
@@ -1347,7 +1348,7 @@ class LetterModuleTest extends TestCase
 
     public function test_letter_media_rejects_non_images_and_oversized_images(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
         $user = User::factory()->create();
         $letter = Letter::factory()->for($user)->create();
         Passport::actingAs($user);
@@ -1363,28 +1364,28 @@ class LetterModuleTest extends TestCase
 
     public function test_permanently_deleting_a_letter_removes_uploaded_images(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
         $user = User::factory()->create();
         $letter = Letter::factory()->for($user)->create(['title' => 'Letter with image']);
         $path = UploadedFile::fake()->create('stored.png', 120, 'image/png')->store(
             "letters/{$user->uuid}/{$letter->uuid}",
-            'public',
+            'local',
         );
         $letter->media()->create([
             'path' => $path,
             'original_name' => 'stored.png',
             'mime_type' => 'image/png',
-            'size' => Storage::disk('public')->size($path),
+            'size' => Storage::disk('local')->size($path),
         ]);
         Passport::actingAs($user);
 
         $this->deleteJson(route('letters.destroy', $letter->uuid))->assertOk();
         $trashEntry = TrashEntry::query()->where('item_type', 'letter')->sole();
-        Storage::disk('public')->assertExists($path);
+        Storage::disk('local')->assertExists($path);
 
         $this->deleteJson(route('trash.destroy', $trashEntry->uuid))->assertOk();
 
-        Storage::disk('public')->assertMissing($path);
+        Storage::disk('local')->assertMissing($path);
         $this->assertDatabaseCount('letter_media', 0);
     }
 

@@ -5,6 +5,7 @@ namespace App\Services\Area;
 use App\Data\Area\AreaData;
 use App\Enum\CoreFeature;
 use App\Models\Area;
+use App\Models\Project;
 use App\Models\User;
 use App\Services\ApiReadCacheService;
 use App\Services\Plan\PlanQuotaService;
@@ -55,17 +56,43 @@ class AreaService
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            if ($area->archived_at === null) {
-                $area->forceFill(['archived_at' => now()])->save();
-            }
+            $projects = $area->projects()->whereNull('archived_at');
+            $movedIds = $projects->pluck('id')->all();
+            $projects->update(['area_id' => null]);
 
-            $moved = $area->projects()
-                ->whereNull('archived_at')
-                ->update(['area_id' => null]);
+            // Remember which projects were moved to Inbox so unarchiving can put them back.
+            $area->forceFill([
+                'archived_at' => $area->archived_at ?? now(),
+                'archived_project_ids' => array_values(array_unique([...($area->archived_project_ids ?? []), ...$movedIds])),
+            ])->save();
 
             app(ApiReadCacheService::class)->invalidateScope('user:'.$area->user()->value('uuid'));
 
-            return $moved;
+            return count($movedIds);
+        });
+    }
+
+    /** Unarchives the Area and returns how many Inbox projects were moved back into it. */
+    public function unarchive(Area $area): int
+    {
+        return DB::transaction(function () use ($area): int {
+            $area = Area::query()
+                ->whereKey($area->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            // Projects the user has since moved to another Area stay where they are.
+            $relinked = Project::query()
+                ->where('user_id', $area->user_id)
+                ->whereIn('id', $area->archived_project_ids ?? [])
+                ->whereNull('area_id')
+                ->update(['area_id' => $area->getKey()]);
+
+            $area->forceFill(['archived_at' => null, 'archived_project_ids' => null])->save();
+
+            app(ApiReadCacheService::class)->invalidateScope('user:'.$area->user()->value('uuid'));
+
+            return $relinked;
         });
     }
 }

@@ -263,7 +263,7 @@ class ResourceModuleTest extends TestCase
             ->assertNotFound();
     }
 
-    public function test_owner_can_archive_a_resource_idempotently_and_remove_all_links(): void
+    public function test_owner_can_archive_a_resource_idempotently_and_unarchive_restores_its_links(): void
     {
         $user = User::factory()->create();
         $resource = $user->resources()->create(['title' => 'Reference']);
@@ -299,10 +299,14 @@ class ResourceModuleTest extends TestCase
         $this->assertTrue($archivedAt->equalTo($resource->fresh()->archived_at));
         $this->getJson(route('resource.index'))->assertJsonPath('data.total', 0);
 
-        $this->postJson(route('resource.restore', $resource->uuid))->assertOk();
-        $this->assertFalse($area->resources()->whereKey($resource->getKey())->exists());
-        $this->assertFalse($project->resources()->whereKey($resource->getKey())->exists());
-        $this->assertFalse($task->resources()->whereKey($resource->getKey())->exists());
+        $this->postJson(route('resource.restore', $resource->uuid))
+            ->assertOk()
+            ->assertJsonCount(1, 'data.areas')
+            ->assertJsonCount(1, 'data.projects');
+        $this->assertTrue($area->resources()->whereKey($resource->getKey())->exists());
+        $this->assertTrue($project->resources()->whereKey($resource->getKey())->exists());
+        $this->assertTrue($task->resources()->whereKey($resource->getKey())->exists());
+        $this->assertNull($resource->fresh()->archived_links);
     }
 
     public function test_resource_archive_requires_authentication_and_ownership(): void

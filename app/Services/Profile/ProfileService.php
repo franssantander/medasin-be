@@ -167,19 +167,24 @@ class ProfileService
         $noteIds = Note::withTrashed()->where('user_id', $user->getKey())->pluck('id');
         $letterIds = Letter::withTrashed()->where('user_id', $user->getKey())->pluck('id');
 
-        $publicFiles = $areas->pluck('background_image')
-            ->merge(NoteMedia::query()->whereIn('note_id', $noteIds)->pluck('path'))
+        $mediaFiles = NoteMedia::query()->whereIn('note_id', $noteIds)->pluck('path')
             ->merge(LetterMedia::query()->whereIn('letter_id', $letterIds)->pluck('path'))
+            ->filter()->unique()->values()->all();
+        // Media uploaded before it became private may still sit on the public disk, so it is purged from both.
+        $publicFiles = $areas->pluck('background_image')
+            ->merge($mediaFiles)
             ->push($user->profile_image_path)->filter()->unique()->values()->all();
         $localFiles = ResourceAttachment::withTrashed()->whereIn('resource_id', $resources->pluck('id'))
-            ->whereNotNull('path')->pluck('path')->unique()->values()->all();
+            ->whereNotNull('path')->pluck('path')->merge($mediaFiles)->unique()->values()->all();
+        $mediaDirectories = $areas->map(fn (Area $area): string => "areas/{$area->uuid}/notes")
+            ->merge(["notes/{$user->uuid}", "letters/{$user->uuid}"]);
 
         return [
             ['public' => $publicFiles, 'local' => $localFiles],
             [
-                'public' => $areas->map(fn (Area $area): string => "areas/{$area->uuid}/notes")
-                    ->merge(["profiles/{$user->uuid}", "notes/{$user->uuid}", "letters/{$user->uuid}"])->all(),
-                'local' => $resources->map(fn (Resource $resource): string => "resources/{$resource->uuid}")->all(),
+                'public' => $mediaDirectories->merge(["profiles/{$user->uuid}"])->all(),
+                'local' => $resources->map(fn (Resource $resource): string => "resources/{$resource->uuid}")
+                    ->merge($mediaDirectories)->all(),
             ],
         ];
     }

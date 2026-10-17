@@ -56,14 +56,6 @@ class AreaController extends Controller
     }
 
     /**
-     * Show the form for creating a new resource.
-     */
-    public function create()
-    {
-        //
-    }
-
-    /**
      * Store a newly created resource in storage.
      */
     public function store(StoreAreaRequest $request)
@@ -85,14 +77,6 @@ class AreaController extends Controller
         $data = $this->ownedArea($request->user(), $area);
 
         return $this->cached($request, fn (): JsonResponse => $this->success($data->load(['projects', 'resources'])));
-    }
-
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit(string $id)
-    {
-        //
     }
 
     /**
@@ -163,7 +147,7 @@ class AreaController extends Controller
 
         if ($movedProjectsCount > 0) {
             $projectLabel = $movedProjectsCount === 1 ? 'project' : 'projects';
-            $message .= " {$movedProjectsCount} active {$projectLabel} moved to Inbox.";
+            $message .= " {$movedProjectsCount} active {$projectLabel} moved to Inbox. Restoring the area moves them back.";
         }
 
         return $this->success($area->fresh(), $message);
@@ -173,10 +157,14 @@ class AreaController extends Controller
     {
         $area = $this->ownedArea($request->user(), $area);
 
-        if ($area->archived_at !== null) {
-            $area->forceFill(['archived_at' => null])->saveOrFail();
+        $relinkedProjectsCount = $this->areaService->unarchive($area);
+        $message = 'Successfully restored area.';
+
+        if ($relinkedProjectsCount > 0) {
+            $projectLabel = $relinkedProjectsCount === 1 ? 'project' : 'projects';
+            $message .= " {$relinkedProjectsCount} {$projectLabel} moved back from Inbox.";
         }
 
-        return $this->success($area->fresh(), 'Successfully restored area.');
+        return $this->success($area->fresh(), $message);
     }
 }

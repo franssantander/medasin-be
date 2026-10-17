@@ -7,7 +7,6 @@ use App\Models\Board;
 use App\Models\Project;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
-use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class BoardService
 {
@@ -62,22 +61,6 @@ class BoardService
             }
 
             return $board->loadCount('tasks')->load('stages');
-        });
-    }
-
-    public function delete(Project $project, Board $board): void
-    {
-        if ($project->boards()->count() <= 1) {
-            throw new ConflictHttpException('A project must keep at least one board.');
-        }
-
-        DB::transaction(function () use ($project, $board): void {
-            $board->tasks()->delete();
-            $board->delete();
-
-            $project->boards()->orderBy('position')->get()->each(
-                fn (Board $item, int $position) => $item->update(['position' => $position]),
-            );
         });
     }
 

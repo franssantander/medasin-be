@@ -44,6 +44,10 @@ class TrashService
             }
             $deletedAt = now();
             $subject->delete();
+            if ($subject instanceof BoardTask) {
+                // Close the gap so the next task added to this stage gets a unique position.
+                $this->resequenceBoardTasks($subject->board()->firstOrFail());
+            }
 
             return $this->createEntry($user, $subject, $itemType, $title, $context, [], $deletedAt);
         });
@@ -184,9 +188,7 @@ class TrashService
             } elseif ($subject instanceof Note) {
                 $this->purgeNotes($entry, $entry->metadata['note_ids'] ?? [$subject->getKey()]);
             } elseif ($subject instanceof Letter) {
-                Storage::disk('public')->delete(
-                    LetterMedia::query()->where('letter_id', $subject->getKey())->pluck('path')->all(),
-                );
+                $this->deleteMediaFiles(LetterMedia::DISK, LetterMedia::query()->where('letter_id', $subject->getKey())->pluck('path')->all());
                 $subject->forceDelete();
             } elseif ($subject instanceof ResourceAttachment) {
                 if ($subject->path) {
@@ -351,7 +353,7 @@ class TrashService
     private function purgeArea(TrashEntry $entry, Area $area): void
     {
         $noteIds = Note::withTrashed()->where('area_id', $area->getKey())->pluck('id');
-        Storage::disk('public')->delete(NoteMedia::query()->whereIn('note_id', $noteIds)->pluck('path')->all());
+        $this->deleteMediaFiles(NoteMedia::DISK, NoteMedia::query()->whereIn('note_id', $noteIds)->pluck('path')->all());
         if ($area->background_image) {
             Storage::disk('public')->delete($area->background_image);
         }
@@ -386,9 +388,21 @@ class TrashService
         $board->forceDelete();
     }
 
+    /**
+     * Note and letter media live on the private disk; files uploaded before that change may still be on the
+     * public disk until media:privatize moves them, so both are cleared.
+     *
+     * @param  list<string>  $paths
+     */
+    private function deleteMediaFiles(string $disk, array $paths): void
+    {
+        Storage::disk($disk)->delete($paths);
+        Storage::disk('public')->delete($paths);
+    }
+
     private function purgeNotes(TrashEntry $entry, array $ids): void
     {
-        Storage::disk('public')->delete(NoteMedia::query()->whereIn('note_id', $ids)->pluck('path')->all());
+        $this->deleteMediaFiles(NoteMedia::DISK, NoteMedia::query()->whereIn('note_id', $ids)->pluck('path')->all());
         $this->removeEntries(Note::class, $ids, $entry);
         Note::withTrashed()->whereIn('id', $ids)->orderByDesc('id')->get()->each->forceDelete();
     }

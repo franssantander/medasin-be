@@ -10,6 +10,7 @@ use App\Models\Area;
 use App\Models\Project;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class AreaProjectController extends Controller
 {
@@ -30,6 +31,9 @@ class AreaProjectController extends Controller
         $project = $request->user()->projects()
             ->where('uuid', $data->project_uuid)
             ->firstOrFail();
+        if ($project->archived_at !== null) {
+            throw new ConflictHttpException('Archived projects are read-only. Restore the project before linking it.');
+        }
         $project->area()->associate($area);
         $project->saveOrFail();
 

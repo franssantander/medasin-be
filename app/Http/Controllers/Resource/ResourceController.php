@@ -99,14 +99,7 @@ class ResourceController extends Controller
     {
         $resource = $request->user()->resources()->whereKey($resource->getKey())->firstOrFail();
 
-        if ($resource->archived_at !== null) {
-            $resource->forceFill(['archived_at' => null])->saveOrFail();
-        }
-
-        return $this->success(
-            $this->service->serialize($resource->fresh(['attachments', 'tags', 'projects', 'areas'])),
-            'Successfully restored resource.',
-        );
+        return $this->success($this->service->unarchive($resource), 'Successfully restored resource.');
     }
 
     public function attachment(Request $request, Resource $resource, string $attachment)

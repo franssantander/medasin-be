@@ -61,14 +61,6 @@ class ProjectController extends Controller
     }
 
     /**
-     * Show the form for creating a new resource.
-     */
-    public function create()
-    {
-        //
-    }
-
-    /**
      * Store a newly created resource in storage.
      */
     public function store(StoreProjectRequest $request): JsonResponse
@@ -122,19 +114,12 @@ class ProjectController extends Controller
     }
 
     /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit(string $id)
-    {
-        //
-    }
-
-    /**
      * Update the specified resource in storage.
      */
     public function update(UpdateProjectRequest $request, Project $project)
     {
         $project = $request->user()->projects()->whereKey($project->getKey())->firstOrFail();
+        $this->ensureProjectIsMutable($project);
         $project->updateOrFail(ProjectData::from($request->validated())->toArray());
 
         return $this->success($project->fresh(), 'Successfully updated project.');
@@ -176,6 +161,7 @@ class ProjectController extends Controller
     public function updateArea(UpdateProjectAreaRequest $request, Project $project): JsonResponse
     {
         $project = $request->user()->projects()->whereKey($project->getKey())->firstOrFail();
+        $this->ensureProjectIsMutable($project);
         $data = $this->projectService->updateArea(
             $request->user(),
             $project,

@@ -10,6 +10,7 @@ use App\Http\Requests\Habit\UpdateHabitRequest;
 use App\Models\Habit;
 use App\Models\HabitCheckIn;
 use App\Services\Habit\HabitService;
+use App\Services\Trash\TrashService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,7 +18,10 @@ use Illuminate\Validation\ValidationException;
 
 class HabitController extends Controller
 {
-    public function __construct(private readonly HabitService $habits) {}
+    public function __construct(
+        private readonly HabitService $habits,
+        private readonly TrashService $trash,
+    ) {}
 
     /**
      * Display a listing of the resource.
@@ -89,10 +93,7 @@ class HabitController extends Controller
      */
     public function update(UpdateHabitRequest $request, Habit $habit)
     {
-        $habit = $this->habits->owned($request->user(), $habit);
-        $habit->updateOrFail(collect($request->validated())->except('area_uuid')->all());
-
-        return $this->success($habit->fresh());
+        return $this->success($this->habits->update($request->user(), $habit, $request->validated()));
     }
 
     /**
@@ -100,9 +101,10 @@ class HabitController extends Controller
      */
     public function destroy(Request $request, Habit $habit)
     {
-        $this->habits->owned($request->user(), $habit)->deleteOrFail();
+        $habit = $this->habits->owned($request->user(), $habit);
+        $this->trash->delete($request->user(), $habit, 'habit', $habit->name, $habit->area?->name);
 
-        return $this->success(null, 'Habit deleted.');
+        return $this->success(null, 'Habit moved to Trash. It will be permanently deleted after 30 days.');
     }
 
     public function checkIn(UpdateHabitCheckInRequest $request, Habit $habit, string $date)

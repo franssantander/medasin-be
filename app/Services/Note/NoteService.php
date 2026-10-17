@@ -5,6 +5,7 @@ namespace App\Services\Note;
 use App\Data\Note\NoteData;
 use App\Models\Area;
 use App\Models\Note;
+use App\Models\NoteMedia;
 use App\Models\User;
 use App\Services\Plan\PlanQuotaService;
 use App\Services\Profile\FileCleanupService;
@@ -12,7 +13,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
@@ -106,12 +106,12 @@ class NoteService
             $path = "{$directory}/{$filename}";
             DB::afterRollBack(function () use ($path): void {
                 try {
-                    $this->fileCleanup->deleteOrQueue(['public' => [$path]]);
+                    $this->fileCleanup->deleteOrQueue([NoteMedia::DISK => [$path]]);
                 } catch (Throwable $exception) {
                     report($exception);
                 }
             });
-            if ($file->storeAs($directory, $filename, 'public') === false) {
+            if ($file->storeAs($directory, $filename, NoteMedia::DISK) === false) {
                 throw new RuntimeException('Unable to store note media.');
             }
             $media = $note->media()->create([
@@ -123,7 +123,7 @@ class NoteService
 
             return [
                 'uuid' => $media->uuid,
-                'url' => url(Storage::disk('public')->url($media->path)),
+                'url' => $media->url(),
                 'kind' => str_starts_with($media->mime_type, 'image/') ? 'image' : 'video',
                 'mime_type' => $media->mime_type,
                 'name' => $media->original_name,

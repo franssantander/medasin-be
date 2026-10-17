@@ -24,19 +24,19 @@ class AreaNoteEditorTest extends TestCase
     #[DataProvider('partialWriteFailures')]
     public function test_area_note_storage_failure_removes_a_file_written_before_the_failure(bool $throw): void
     {
-        $disk = Storage::fake('public');
+        $disk = Storage::fake('local');
         $user = User::factory()->create();
         $area = $user->areas()->create(['name' => 'Partial upload area']);
         $note = $area->notes()->create(['title' => 'Partial upload', 'content' => 'Note content']);
         Passport::actingAs($user);
-        $this->failAfterStorageWrite('public', $disk, $throw);
+        $this->failAfterStorageWrite('local', $disk, $throw);
 
         try {
             $this->postJson(route('area.notes.media.store', [$area, $note]), [
                 'file' => UploadedFile::fake()->create('photo.png', 120, 'image/png'),
             ])->assertServerError();
         } finally {
-            Storage::set('public', $disk);
+            Storage::set('local', $disk);
         }
 
         $this->assertSame([], $disk->allFiles());
@@ -55,7 +55,7 @@ class AreaNoteEditorTest extends TestCase
 
     public function test_area_note_upload_does_not_write_after_its_cached_owner_was_deleted(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
         $user = User::factory()->create();
         $area = $user->areas()->create(['name' => 'Deleted owner area']);
         $note = $area->notes()->create(['title' => 'Deleted owner note', 'content' => 'Note content']);
@@ -65,14 +65,14 @@ class AreaNoteEditorTest extends TestCase
             app(NoteService::class)->storeMedia($user, $note, UploadedFile::fake()->create('photo.png', 120, 'image/png'), $area);
             $this->fail('An upload for a deleted area owner must fail.');
         } catch (ModelNotFoundException) {
-            $this->assertSame([], Storage::disk('public')->allFiles());
+            $this->assertSame([], Storage::disk('local')->allFiles());
             $this->assertDatabaseCount('note_media', 0);
         }
     }
 
     public function test_area_note_upload_refreshes_the_area_before_writing_a_file(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
         $user = User::factory()->create();
         $area = $user->areas()->create(['name' => 'Archived area']);
         $note = $area->notes()->create(['title' => 'Archived note', 'content' => 'Note content']);
@@ -85,13 +85,13 @@ class AreaNoteEditorTest extends TestCase
             $this->assertSame(409, $exception->getStatusCode());
         }
 
-        $this->assertSame([], Storage::disk('public')->allFiles());
+        $this->assertSame([], Storage::disk('local')->allFiles());
         $this->assertDatabaseCount('note_media', 0);
     }
 
     public function test_area_note_media_persistence_failure_removes_the_new_file(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
         $user = User::factory()->create();
         $area = $user->areas()->create(['name' => 'Rollback area']);
         $note = $area->notes()->create(['title' => 'Rollback note', 'content' => 'Note content']);
@@ -109,7 +109,7 @@ class AreaNoteEditorTest extends TestCase
             NoteMedia::clearBootedModels();
         }
 
-        $this->assertSame([], Storage::disk('public')->allFiles());
+        $this->assertSame([], Storage::disk('local')->allFiles());
         $this->assertDatabaseCount('note_media', 0);
         $this->assertModelExists($note);
     }
@@ -174,7 +174,7 @@ class AreaNoteEditorTest extends TestCase
 
     public function test_note_media_is_validated_and_retained_while_its_note_tree_is_in_trash(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
         $user = User::factory()->create();
         $area = $user->areas()->create(['name' => 'Writing']);
         $note = $area->notes()->create(['title' => 'Draft', 'content' => $this->document()]);
@@ -196,7 +196,7 @@ class AreaNoteEditorTest extends TestCase
         ])->assertUnprocessable()->assertJsonValidationErrors('file');
 
         $paths = NoteMedia::query()->pluck('path');
-        $paths->each(fn (string $path) => Storage::disk('public')->assertExists($path));
+        $paths->each(fn (string $path) => Storage::disk('local')->assertExists($path));
 
         $this->deleteJson(route('area.notes.destroy', [$area, $note]))->assertOk();
 
@@ -204,12 +204,12 @@ class AreaNoteEditorTest extends TestCase
         $this->assertSoftDeleted('notes', ['id' => $child->getKey()]);
         $this->assertDatabaseCount('note_media', 2);
         $this->assertDatabaseHas('trash_entries', ['subject_uuid' => $note->uuid, 'item_type' => 'note']);
-        $paths->each(fn (string $path) => Storage::disk('public')->assertExists($path));
+        $paths->each(fn (string $path) => Storage::disk('local')->assertExists($path));
     }
 
     public function test_archived_areas_reject_note_media_uploads(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
         $user = User::factory()->create();
         $area = $user->areas()->create(['name' => 'Writing', 'archived_at' => now()]);
         $note = $area->notes()->create(['title' => 'Draft', 'content' => $this->document()]);

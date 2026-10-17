@@ -3,6 +3,8 @@
 return [
     'words_per_minute' => 200,
     'max_pages' => 10,
+    // Browser-measured exports may run past the server paginator's cap; this only bounds abuse.
+    'max_client_pages' => 60,
     'continuation_label' => 'Continued in the app',
     'profiles' => [
         'portrait' => [

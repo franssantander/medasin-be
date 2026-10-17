@@ -42,7 +42,7 @@ class AreaHabitController extends Controller
         $area = $this->ownedArea($request->user(), $area);
         $this->ensureAreaIsMutable($area);
         $data = HabitData::from($request->validated())->toArray();
-        $this->validateSchedule($data);
+        $this->habitService->validateSchedule($data);
         $habit = DB::transaction(fn (): Habit => $request->user()->habits()->create([
             ...$data,
             'area_id' => $area->getKey(),
@@ -75,7 +75,7 @@ class AreaHabitController extends Controller
         $this->ensureAreaIsMutable($area);
         $habit = $area->habits()->whereKey($habit->getKey())->firstOrFail();
         $data = HabitData::from($request->validated())->toArray();
-        $this->validateSchedule($data, $habit);
+        $this->habitService->validateSchedule($data, $habit);
         $habit->updateOrFail($data);
 
         return $this->success($habit->fresh(), 'Successfully updated habit.');
@@ -122,19 +122,7 @@ class AreaHabitController extends Controller
             'timezone' => ['sometimes', 'string', 'timezone'],
         ]);
         $timezone = $validated['timezone'] ?? 'UTC';
-        $checkInDate = CarbonImmutable::createFromFormat('Y-m-d', $date, $timezone)->startOfDay();
-        if ($checkInDate->isFuture()) {
-            throw ValidationException::withMessages(['date' => 'Future check-ins are not allowed.']);
-        }
-        if ($checkInDate->lt(CarbonImmutable::parse($habit->created_at)->setTimezone($timezone)->startOfDay())) {
-            throw ValidationException::withMessages(['date' => 'Check-ins cannot be recorded before the habit was created.']);
-        }
-        if (! $habit->is_active) {
-            throw ValidationException::withMessages(['habit' => 'Paused habits cannot be checked in.']);
-        }
-        if (! $this->habitStreakService->isScheduled($habit, $checkInDate, $timezone)) {
-            throw ValidationException::withMessages(['date' => 'This habit is not scheduled on that date.']);
-        }
+        $checkInDate = $this->habitService->checkInDate($habit, $date, $timezone);
         $existing = $habit->checkIns()->whereDate('check_in_date', $checkInDate)->first();
         if ($existing) {
             $existing->updateOrFail(['completed' => $validated['completed']]);
@@ -181,20 +169,5 @@ class AreaHabitController extends Controller
             'completed_count' => $completed,
             'completion_rate' => $scheduled ? (int) round(($completed / $scheduled) * 100) : 0,
         ];
-    }
-
-    private function validateSchedule(array $data, ?Habit $habit = null): void
-    {
-        $frequency = $data['frequency'] ?? $habit?->frequency->value ?? 'daily';
-        $schedule = array_key_exists('schedule', $data) ? $data['schedule'] : $habit?->schedule;
-        if ($frequency === 'weekly' && count($schedule['days'] ?? []) < 1) {
-            throw ValidationException::withMessages(['schedule.days' => 'Weekly habits require at least one weekday.']);
-        }
-        if ($frequency === 'custom' && count($schedule['days'] ?? []) < 1) {
-            throw ValidationException::withMessages(['schedule.days' => 'Choose at least one weekday.']);
-        }
-        if ($frequency === 'monthly' && count($schedule['dates'] ?? []) < 1) {
-            throw ValidationException::withMessages(['schedule.dates' => 'Choose at least one date.']);
-        }
     }
 }

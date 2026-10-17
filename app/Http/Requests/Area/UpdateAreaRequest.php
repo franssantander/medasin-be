@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Area;
 
+use App\Http\Requests\Concerns\ValidatesUniqueName;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Str;
@@ -10,6 +11,8 @@ use Illuminate\Validation\Validator;
 
 class UpdateAreaRequest extends FormRequest
 {
+    use ValidatesUniqueName;
+
     protected function prepareForValidation(): void
     {
         if (is_string($this->input('name'))) {
@@ -44,18 +47,18 @@ class UpdateAreaRequest extends FormRequest
     public function after(): array
     {
         return [function (Validator $validator): void {
-            if (! $this->has('name') || $validator->errors()->has('name')) {
+            if (! $this->has('name')) {
                 return;
             }
 
-            $query = $this->user()->areas()->where('slug', Str::slug($this->string('name')->toString()));
-            if ($area = $this->route('area')) {
-                $query->whereKeyNot($area->getKey());
-            }
-
-            if ($query->exists()) {
-                $validator->errors()->add('name', 'An area with this name already exists.');
-            }
+            $this->validateUniqueName(
+                $validator,
+                $this->user()->areas(),
+                'slug',
+                Str::slug($this->string('name')->toString()),
+                'area',
+                $this->route('area'),
+            );
         }];
     }
 }

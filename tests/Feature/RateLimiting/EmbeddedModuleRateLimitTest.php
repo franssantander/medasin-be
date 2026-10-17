@@ -72,7 +72,7 @@ it('shares the Board allowance across standalone and Project board labels tasks 
 
 it('shares the Notes allowance across standalone and Area note CRUD trees and media', function (): void {
     $this->freezeTime();
-    Storage::fake('public');
+    Storage::fake('local');
     $user = User::factory()->create();
     $area = $user->areas()->create(['name' => 'Writing']);
     Passport::actingAs($user);
@@ -108,13 +108,13 @@ it('shares the Notes allowance across standalone and Area note CRUD trees and me
     $this->assertSoftDeleted('notes', ['id' => $areaNote->id, 'content' => 'Saved Area draft']);
     $this->assertDatabaseCount('note_media', 2);
     foreach (NoteMedia::query()->pluck('path') as $path) {
-        Storage::disk('public')->assertExists($path);
+        Storage::disk('local')->assertExists($path);
     }
 });
 
 it('shares the Letters allowance across different letters media and export operations', function (): void {
     $this->freezeTime();
-    Storage::fake('public');
+    Storage::fake('local');
     $user = User::factory()->create();
     $otherLetter = Letter::factory()->for($user)->create();
     Queue::fake([GenerateLetterExport::class]);
@@ -152,6 +152,6 @@ it('shares the Letters allowance across different letters media and export opera
     $this->assertDatabaseHas('letter_exports', ['id' => $export->id, 'status' => 'queued', 'format' => 'square']);
     $this->assertSame('Updated cover', $readyExport->fresh()->pages[0]['title']);
     $this->assertDatabaseCount('letter_media', 1);
-    Storage::disk('public')->assertExists(LetterMedia::query()->sole()->path);
+    Storage::disk('local')->assertExists(LetterMedia::query()->sole()->path);
     Queue::assertPushed(GenerateLetterExport::class, fn (GenerateLetterExport $job): bool => $job->letterExport->is($export));
 });

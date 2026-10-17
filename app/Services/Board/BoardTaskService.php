@@ -21,7 +21,7 @@ class BoardTaskService
             $stage = $this->stage($board, $data['stage'] ?? BoardStageKey::BACKLOG->value);
             $task = $board->tasks()->make(Arr::only($data, ['title', 'description', 'priority']));
             $task->stage()->associate($stage);
-            $task->position = $stage->tasks()->count();
+            $task->position = ($stage->tasks()->max('position') ?? -1) + 1;
             $task->save();
 
             if (array_key_exists('position', $data)) {
@@ -80,17 +80,6 @@ class BoardTaskService
             }
 
             return $this->loadTask($task);
-        });
-    }
-
-    public function delete(BoardTask $task): void
-    {
-        DB::transaction(function () use ($task): void {
-            $stageId = $task->board_stage_id;
-            $task->delete();
-            $this->resequence(
-                BoardTask::query()->where('board_stage_id', $stageId)->orderBy('position')->get(),
-            );
         });
     }
 

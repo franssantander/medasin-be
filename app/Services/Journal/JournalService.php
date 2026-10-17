@@ -5,7 +5,6 @@ namespace App\Services\Journal;
 use App\Data\Journal\JournalEntryData;
 use App\Models\FocusSession;
 use App\Models\JournalEntry;
-use App\Models\TrashEntry;
 use App\Models\User;
 use App\Services\ApiReadCacheService;
 use App\Services\Search\SearchText;
@@ -89,39 +88,35 @@ class JournalService
         });
     }
 
-    public function upsertFocusReflection(
+    /**
+     * Starts a Journal entry from a Focus reflection. The entry belongs to the user from then on: saving the
+     * reflection again never overwrites their edits, and an entry they deleted stays deleted.
+     */
+    public function createFocusReflectionEntry(
         User $user,
         FocusSession $session,
         ?string $mood,
         ?string $note,
-    ): JournalEntry {
+    ): ?JournalEntry {
         if ($session->user_id !== $user->getKey()) {
             abort(404);
         }
 
-        $entry = $user->journalEntries()
+        $exists = $user->journalEntries()
             ->withTrashed()
             ->where('focus_session_id', $session->getKey())
-            ->first();
-        $attributes = [
-            'title' => $this->focusReflectionTitle($session),
-            'content' => $this->documentFromNote($note),
-            'content_text' => $note !== null ? SearchText::fromDocument($this->documentFromNote($note)) : null,
-            'focus_session_id' => $session->getKey(),
-        ];
-
-        if ($entry) {
-            if ($entry->trashed()) {
-                $entry->restore();
-                TrashEntry::query()
-                    ->where('subject_type', JournalEntry::class)
-                    ->where('subject_id', $entry->getKey())
-                    ->delete();
-            }
-            $entry->forceFill($attributes)->save();
-        } else {
-            $entry = $user->journalEntries()->create($attributes);
+            ->exists();
+        if ($exists) {
+            return null;
         }
+
+        $document = $this->documentFromNote($note);
+        $entry = $user->journalEntries()->create([
+            'title' => $this->focusReflectionTitle($session),
+            'content' => $document,
+            'content_text' => $note !== null ? SearchText::fromDocument($document) : null,
+            'focus_session_id' => $session->getKey(),
+        ]);
 
         return $this->load($entry);
     }
