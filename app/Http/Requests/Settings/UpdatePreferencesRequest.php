@@ -16,7 +16,7 @@ class UpdatePreferencesRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'font_family' => ['required', 'string', Rule::in(['manrope', 'geist', 'inter'])],
+            'font_family' => ['required', 'string', Rule::in(['geist', 'newsreader', 'manrope', 'inter'])],
         ];
     }
 
@@ -26,7 +26,7 @@ class UpdatePreferencesRequest extends FormRequest
         return [
             'font_family.required' => 'Choose a font.',
             'font_family.string' => 'Choose a valid font.',
-            'font_family.in' => 'Choose Manrope, Geist, or Inter.',
+            'font_family.in' => 'Choose Geist, Newsreader, Manrope, or Inter.',
         ];
     }
 }

@@ -15,7 +15,7 @@ class UserData extends Data
         public string $email,
         public string $username,
         public ?Status $status,
-        public string $font_family = 'manrope',
+        public string $font_family = 'geist',
         public ?string $profile_image_url = null,
     ) {}
 }

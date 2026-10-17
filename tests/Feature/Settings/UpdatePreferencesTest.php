@@ -12,22 +12,23 @@ class UpdatePreferencesTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_new_accounts_default_to_manrope_in_the_database_and_profile(): void
+    public function test_new_accounts_default_to_geist_in_the_database_and_profile(): void
     {
         $user = User::factory()->create()->refresh();
         Passport::actingAs($user);
 
-        $this->getJson(route('auth.me'))->assertOk()->assertJsonPath('data.font_family', 'manrope');
+        $this->getJson(route('auth.me'))->assertOk()->assertJsonPath('data.font_family', 'geist');
 
-        $this->assertDatabaseHas('users', ['id' => $user->id, 'font_family' => 'manrope']);
+        $this->assertDatabaseHas('users', ['id' => $user->id, 'font_family' => 'geist']);
     }
 
     /** @return array<string, array{string}> */
     public static function supportedFonts(): array
     {
         return [
-            'default' => ['manrope'],
-            'geist' => ['geist'],
+            'default' => ['geist'],
+            'newsreader' => ['newsreader'],
+            'manrope' => ['manrope'],
             'inter' => ['inter'],
         ];
     }
@@ -55,9 +56,9 @@ class UpdatePreferencesTest extends TestCase
             'missing' => [[], 'Choose a font.'],
             'null' => [['font_family' => null], 'Choose a font.'],
             'empty' => [['font_family' => ''], 'Choose a font.'],
-            'unsupported' => [['font_family' => 'serif'], 'Choose Manrope, Geist, or Inter.'],
-            'wrong case' => [['font_family' => 'Geist'], 'Choose Manrope, Geist, or Inter.'],
-            'css value' => [['font_family' => 'url(https://example.com/font)'], 'Choose Manrope, Geist, or Inter.'],
+            'unsupported' => [['font_family' => 'serif'], 'Choose Geist, Newsreader, Manrope, or Inter.'],
+            'wrong case' => [['font_family' => 'Geist'], 'Choose Geist, Newsreader, Manrope, or Inter.'],
+            'css value' => [['font_family' => 'url(https://example.com/font)'], 'Choose Geist, Newsreader, Manrope, or Inter.'],
             'number' => [['font_family' => 42], 'Choose a valid font.'],
             'array' => [['font_family' => ['geist']], 'Choose a valid font.'],
         ];
@@ -73,17 +74,17 @@ class UpdatePreferencesTest extends TestCase
             ->assertUnprocessable()->assertJsonValidationErrors('font_family')
             ->assertJsonPath('errors.font_family.0', $message);
 
-        $this->assertDatabaseHas('users', ['id' => $user->id, 'font_family' => 'manrope']);
+        $this->assertDatabaseHas('users', ['id' => $user->id, 'font_family' => 'geist']);
     }
 
     public function test_returns_401_without_a_session_and_does_not_save_a_font(): void
     {
         $user = User::factory()->create();
 
-        $this->patchJson(route('settings.preferences.update'), ['font_family' => 'geist'])
+        $this->patchJson(route('settings.preferences.update'), ['font_family' => 'newsreader'])
             ->assertUnauthorized();
 
-        $this->assertDatabaseHas('users', ['id' => $user->id, 'font_family' => 'manrope']);
+        $this->assertDatabaseHas('users', ['id' => $user->id, 'font_family' => 'geist']);
     }
 
     public function test_returns_403_for_an_unverified_account_without_changing_its_font(): void
@@ -91,10 +92,10 @@ class UpdatePreferencesTest extends TestCase
         $user = User::factory()->unverified()->create();
         Passport::actingAs($user);
 
-        $this->patchJson(route('settings.preferences.update'), ['font_family' => 'geist'])
+        $this->patchJson(route('settings.preferences.update'), ['font_family' => 'newsreader'])
             ->assertForbidden()->assertJsonPath('message', 'Please verify your email address before accessing the app.');
 
-        $this->assertDatabaseHas('users', ['id' => $user->id, 'font_family' => 'manrope']);
+        $this->assertDatabaseHas('users', ['id' => $user->id, 'font_family' => 'geist']);
     }
 
     public function test_updates_only_the_authenticated_users_font_and_ignores_unrelated_attributes(): void
@@ -104,19 +105,19 @@ class UpdatePreferencesTest extends TestCase
         Passport::actingAs($user);
 
         $this->patchJson(route('settings.preferences.update'), [
-            'font_family' => 'geist',
+            'font_family' => 'newsreader',
             'user_id' => $other->id,
             'id' => $other->id,
             'first_name' => 'Changed',
             'email' => 'changed@example.com',
-        ])->assertOk()->assertJsonPath('data.font_family', 'geist');
+        ])->assertOk()->assertJsonPath('data.font_family', 'newsreader');
 
         $this->assertDatabaseHas('users', [
             'id' => $user->id,
-            'font_family' => 'geist',
+            'font_family' => 'newsreader',
             'first_name' => $user->first_name,
             'email' => $user->email,
         ]);
-        $this->assertDatabaseHas('users', ['id' => $other->id, 'font_family' => 'manrope']);
+        $this->assertDatabaseHas('users', ['id' => $other->id, 'font_family' => 'geist']);
     }
 }
