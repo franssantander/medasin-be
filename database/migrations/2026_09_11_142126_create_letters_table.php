@@ -24,10 +24,12 @@ return new class extends Migration
             $table->unsignedSmallInteger('read_time_minutes')->default(0);
             $table->enum('status', array_column(LetterStatus::cases(), 'value'))->default(LetterStatus::DRAFT->value);
             $table->timestamp('exported_at')->nullable();
+            $table->timestamp('done_at')->nullable();
             $table->softDeletes();
             $table->timestamps();
             $table->index(['user_id', 'updated_at']);
             $table->index(['user_id', 'status']);
+            $table->index(['user_id', 'done_at']);
         });
     }
 

@@ -23,7 +23,7 @@ return new class extends Migration
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
             $table->enum('status', array_column(Status::cases(), 'value'))->default(Status::ACTIVE->value);
-            $table->string('font_family', 20)->default('manrope');
+            $table->string('font_family', 20)->default('geist');
             $table->string('profile_image_path')->nullable();
             $table->rememberToken();
             $table->timestamps();
